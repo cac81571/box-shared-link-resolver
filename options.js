@@ -6,10 +6,14 @@ document.getElementById("save").onclick = async () => {
   c.folderId = c.folderId === "" ? 0 : +c.folderId;
   if (Number.isNaN(c.folderId)) c.folderId = 0;
   c.updatedDays = +c.updatedDays || 7;
-  c.domainB = c.domainB.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-  if (c.domainB && !c.domainB.endsWith(".box.com")) {
-    const ok = await chrome.permissions.request({ origins: ["https://" + c.domainB + "/*"] });
-    if (!ok) { document.getElementById("msg").textContent = "権限が拒否されました"; return; }
+  const strip = s => String(s || "").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  c.ownDomain = strip(c.ownDomain);
+  c.domainB = strip(c.domainB);
+  for (const host of [c.ownDomain, c.domainB]) {
+    if (host && !host.endsWith(".box.com")) {
+      const ok = await chrome.permissions.request({ origins: ["https://" + host + "/*"] });
+      if (!ok) { document.getElementById("msg").textContent = "権限が拒否されました"; return; }
+    }
   }
   await chrome.storage.sync.set(c);
   document.getElementById("msg").textContent = "保存しました";

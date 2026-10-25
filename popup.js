@@ -19,13 +19,14 @@ function clipboardSharedLink(host) {
   const prefix = "https://" + host + "/s/";
   return t.startsWith(prefix) ? t : "";
 }
-chrome.storage.sync.get({ domainB: "" }).then(c => {
+chrome.storage.sync.get({ ownDomain: "", domainB: "" }).then(c => {
+  const own = configuredHost(c.ownDomain);
   const host = configuredHost(c.domainB);
-  $("l").placeholder = "https://" + (host || "(コラボレーション先のドメイン)") + "/s/" + SAMPLE_ID;
-  if (!host) {
+  $("l").placeholder = "https://" + (host || "(コラボ先ドメイン)") + "/s/" + SAMPLE_ID;
+  if (!own || !host) {
     $("go").disabled = true;
     $("msg").className = "hint";
-    $("msg").textContent = "はじめに「設定」リンクをクリックして「コラボレーション先のドメイン」を登録してください";
+    $("msg").textContent = "はじめに「設定」リンクをクリックして「自社ドメイン」と「コラボ先ドメイン」を登録してください";
   }
   const el = $("l");
   const link = clipboardSharedLink(host);

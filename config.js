@@ -1,5 +1,9 @@
 // 設定とBox内部エンドポイント（非公開・推測を含む）をここに集約
+function stripHost(s) {
+  return String(s || "").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+}
 export const DEFAULTS = {
+  ownDomain: "",          // 例: my-corp.ent.box.com （https:// なし）
   domainB: "",            // 例: customer-corp.ent.box.com （https:// なし）
   // {folderid} はフォルダID, {updatedDays} は過去日数, {page} はページ番号。Box Web内部APIは非公開のため要調整
   searchEndpoints: "/app-api/enduserapp/folder/{folderid}/search?sortColumn=date&sortDirection=desc&updatedTime={updatedDays}&page={page}",
@@ -8,7 +12,8 @@ export const DEFAULTS = {
 };
 export async function getConfig() {
   const c = await chrome.storage.sync.get(DEFAULTS);
-  c.domainB = (c.domainB || "").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  c.ownDomain = stripHost(c.ownDomain);
+  c.domainB = stripHost(c.domainB);
   c.folderId = c.folderId === "" || c.folderId == null ? 0 : +c.folderId;
   if (Number.isNaN(c.folderId)) c.folderId = 0;
   c.updatedDays = +c.updatedDays || 7;
