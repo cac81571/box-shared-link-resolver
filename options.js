@@ -1,7 +1,10 @@
 // 設定画面。DEFAULTS のキーと同名の入力欄を読み書きする。
 import { DEFAULTS } from "./config.js";
 const keys = Object.keys(DEFAULTS);
-chrome.storage.sync.get(DEFAULTS).then(c => keys.forEach(k => document.getElementById(k).value = c[k]));
+chrome.storage.sync.get(DEFAULTS).then(c => keys.forEach(k => {
+  const empty = (k === "ownDomain" || k === "domainB") && !String(c[k] || "").trim();
+  document.getElementById(k).value = empty ? DEFAULTS[k] : c[k];
+}));
 document.getElementById("save").onclick = async () => {
   const c = {}; keys.forEach(k => c[k] = document.getElementById(k).value);
   c.folderId = c.folderId === "" ? 0 : +c.folderId;

@@ -1,9 +1,7 @@
 // ポップアップ UI。共有リンク入力 → background の resolve → 結果表示。
+import { getConfig } from "./config.js";
 const $ = id => document.getElementById(id);
 const SAMPLE_ID = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
-function configuredHost(domainB) {
-  return String(domainB || "").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-}
 // ポップアップでは clipboard.readText() が拒否されがちなので execCommand('paste') を使う
 function readClipboardText() {
   const ta = document.createElement("textarea");
@@ -22,9 +20,9 @@ function clipboardSharedLink(host) {
   const prefix = "https://" + host + "/s/";
   return t.startsWith(prefix) ? t : "";
 }
-chrome.storage.sync.get({ ownDomain: "", domainB: "" }).then(c => {
-  const own = configuredHost(c.ownDomain);
-  const host = configuredHost(c.domainB);
+getConfig().then(c => {
+  const own = c.ownDomain;
+  const host = c.domainB;
   $("l").placeholder = "https://" + (host || "(コラボ先ドメイン)") + "/s/" + SAMPLE_ID;
   if (!own || !host) {
     $("go").disabled = true;

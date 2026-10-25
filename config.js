@@ -13,8 +13,9 @@ export const DEFAULTS = {
 };
 export async function getConfig() {
   const c = await chrome.storage.sync.get(DEFAULTS);
-  c.ownDomain = stripHost(c.ownDomain);
-  c.domainB = stripHost(c.domainB);
+  // 保存値が空なら DEFAULTS を使う（昔の空保存で初期値が消えないようにする）
+  c.ownDomain = stripHost(c.ownDomain) || stripHost(DEFAULTS.ownDomain);
+  c.domainB = stripHost(c.domainB) || stripHost(DEFAULTS.domainB);
   c.folderId = c.folderId === "" || c.folderId == null ? 0 : +c.folderId;
   if (Number.isNaN(c.folderId)) c.folderId = 0;
   c.updatedDays = +c.updatedDays || 7;
