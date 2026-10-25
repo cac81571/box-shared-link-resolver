@@ -51,6 +51,12 @@ chrome.runtime.onMessage.addListener(m => {
   if (m.type === "progress") setBusy(m.pct);
 });
 $("close").onclick = e => { e.preventDefault(); window.close(); };
+$("l").addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    $("go").click();
+  }
+});
 $("go").onclick = async () => {
   busy = true;
   setBusy(0);
