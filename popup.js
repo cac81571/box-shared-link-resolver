@@ -1,8 +1,10 @@
+// ポップアップ UI。共有リンク入力 → background の resolve → 結果表示。
 const $ = id => document.getElementById(id);
 const SAMPLE_ID = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 function configuredHost(domainB) {
   return String(domainB || "").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
 }
+// ポップアップでは clipboard.readText() が拒否されがちなので execCommand('paste') を使う
 function readClipboardText() {
   const ta = document.createElement("textarea");
   ta.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0";
@@ -13,6 +15,7 @@ function readClipboardText() {
   ta.remove();
   return v;
 }
+// 先頭が https://コラボ先ドメイン/s/ のときだけ初期表示する
 function clipboardSharedLink(host) {
   if (!host) return "";
   const t = readClipboardText().trim();
@@ -38,7 +41,7 @@ chrome.storage.sync.get({ ownDomain: "", domainB: "" }).then(c => {
     el.focus();
   }
 });
-let busy = false;
+let busy = false; // 検索終了後に遅延してきた progress で表示を上書きしない
 function setBusy(pct) {
   if (!busy) return;
   $("msg").className = "busy";

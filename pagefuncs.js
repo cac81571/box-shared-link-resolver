@@ -1,6 +1,8 @@
-// executeScript でBoxタブのページ内に注入して実行する関数（同一オリジンのCookieが使われる）
+// 表示中の Box タブへ executeScript で注入する関数。
+// 相対パス fetch なので、そのタブのオリジン（自社ドメイン）と Cookie が使われる。
 export async function pageSearchOnce(sharedId, endpoint, folderId, updatedDays, page) {
   const log = [];
+  // typedID は d_フォルダ / f_ファイル。id から接頭辞を外して遷移用 ID にする
   function itemHit(o) {
     if (!o || typeof o !== "object") return null;
     const id = o.id ?? o.typedID ?? o.itemID ?? o.item_id;
@@ -8,6 +10,7 @@ export async function pageSearchOnce(sharedId, endpoint, folderId, updatedDays, 
     const typ = String(o.type ?? o.itemType ?? o.typedID ?? "").toLowerCase();
     return { id: String(id).replace(/^[a-z]_/, ""), type: typ.includes("file") || String(o.typedID || "").startsWith("f_") ? "file" : "folder", name: String(o.name || o.itemName || "") };
   }
+  // /s/ID の直後が区切り文字のときだけ一致（部分一致で別リンクを拾わない）
   const exactSidRe = new RegExp("/s/" + sharedId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?:[/?#\"']|$)");
   function sharedLinkId(s) {
     const m = String(s || "").match(/\/s\/([A-Za-z0-9]+)/);
@@ -16,7 +19,6 @@ export async function pageSearchOnce(sharedId, endpoint, folderId, updatedDays, 
   function hasExactSharedId(s) {
     return sharedLinkId(s) === sharedId;
   }
-  // JSON中を再帰的に探索し、共有IDが完全一致するオブジェクトのid/typeを返す
   function walk(o, depth) {
     if (!o || typeof o !== "object" || depth > 12) return null;
     if (!Array.isArray(o) && hasExactSharedId(o.sharedLink)) return itemHit(o);
@@ -60,6 +62,7 @@ export async function pageSearchOnce(sharedId, endpoint, folderId, updatedDays, 
       meta = " page=" + (data.pageNumber ?? page) + "/" + pageCount + " resultCount=" + (resultCount ?? "?");
     } catch { }
     log.push("GET " + url + " -> " + r.status + " (" + txt.length + "B)" + meta + " " + txt.slice(0, 120).replace(/\s+/g, " "));
+    // 共有リンク付き items だけキャッシュ用に返す
     const items = [];
     try {
       const data = JSON.parse(txt);

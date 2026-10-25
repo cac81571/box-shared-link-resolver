@@ -1,9 +1,12 @@
+// 共有リンクを自社ドメイン上の file/folder ID に解決して開く。
+// 検索は表示中タブ（自社Box）で内部APIを呼ぶ。遷移先は常に ownDomain。
 import { getConfig, extractSharedId } from "./config.js";
 import { pageSearchOnce } from "./pagefuncs.js";
 const MAX_PAGES = 100;
 const PAGE_DELAY_MS = 200; // 毎秒6リクエスト制限より少し余裕を見る
 const CACHE_KEY = "searchCache";
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// 設定が変わったら別キャッシュとして扱う
 function cacheKey(cfg) {
   return [cfg.ownDomain, cfg.domainB, cfg.folderId, cfg.updatedDays, cfg.searchEndpoints].join("|");
 }
@@ -16,6 +19,7 @@ async function loadCache(cfg) {
 function saveCache(cache) {
   return chrome.storage.local.set({ [CACHE_KEY]: cache });
 }
+// 1ページ分の items を sharedId → {id,type,name} で蓄積する
 function mergePage(cache, page) {
   for (const it of page.items || []) {
     if (it.sharedId) cache.items[it.sharedId] = { id: it.id, type: it.type, name: it.name };
@@ -27,10 +31,12 @@ async function currentTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   return tabs[0] || null;
 }
+// MAIN world で実行し、表示中ページと同じ Cookie で fetch する
 async function run(tabId, func, args) {
   const [res] = await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func, args });
   return res.result || { log: ["no result"] };
 }
+// skipCached=true なら既に取ったページは飛ばす。ヒットしたらそのページで止める
 async function searchPages(tabId, sid, cfg, progress, cache, skipCached) {
   const ep = (cfg.searchEndpoints || "").split("\n").map(s => s.trim()).filter(Boolean)[0] || "";
   const log = [];
@@ -71,6 +77,7 @@ export async function resolve(link, onProgress) {
     if (!tabForSearch) return { ok: false, log: [...log, "処理するタブがありません"] };
     r = await searchPages(tabForSearch.id, sid, cfg, progress, cache, true);
     log.push(...(r.log || []));
+    // 全ページキャッシュ済みでも無い → 期限切れの可能性があるので取り直す
     if (!r.id && cache.pageCount && Object.keys(cache.pages).length >= cache.pageCount) {
       cache.pages = {};
       log.push("cache miss → 再検索");

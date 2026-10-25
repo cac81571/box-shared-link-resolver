@@ -1,3 +1,4 @@
+// 設定画面。DEFAULTS のキーと同名の入力欄を読み書きする。
 import { DEFAULTS } from "./config.js";
 const keys = Object.keys(DEFAULTS);
 chrome.storage.sync.get(DEFAULTS).then(c => keys.forEach(k => document.getElementById(k).value = c[k]));
@@ -9,6 +10,7 @@ document.getElementById("save").onclick = async () => {
   const strip = s => String(s || "").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
   c.ownDomain = strip(c.ownDomain);
   c.domainB = strip(c.domainB);
+  // *.box.com 以外は任意ホスト権限が必要
   for (const host of [c.ownDomain, c.domainB]) {
     if (host && !host.endsWith(".box.com")) {
       const ok = await chrome.permissions.request({ origins: ["https://" + host + "/*"] });
