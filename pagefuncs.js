@@ -3,21 +3,60 @@
 export async function pageSearchOnce(sharedId, endpoint, folderId, updatedDays, page) {
   const log = [];
   // typedID は d_フォルダ / f_ファイル。id から接頭辞を外して遷移用 ID にする
+  function toMs(v, depth) {
+    if (v == null || v === "" || depth > 3) return 0;
+    if (typeof v === "number" && Number.isFinite(v)) {
+      if (v > 1e12 && v < 2e13) return Math.round(v);
+      if (v > 1e9 && v < 2e10) return Math.round(v * 1000);
+      return 0;
+    }
+    if (typeof v === "string") {
+      const s = v.trim();
+      const asp = s.match(/\/Date\((\d+)/);
+      if (asp) return +asp[1];
+      if (/^\d{10,13}$/.test(s)) return toMs(+s, depth + 1);
+      const jp = s.match(/(\d{4})[年/\-](\d{1,2})[月/\-](\d{1,2})/);
+      if (jp) return new Date(+jp[1], +jp[2] - 1, +jp[3]).getTime();
+      if (/^\d{4}-\d{2}-\d{2}/.test(s) || /T\d{2}:/.test(s)) {
+        const t = Date.parse(s);
+        return Number.isNaN(t) ? 0 : t;
+      }
+      return 0;
+    }
+    if (typeof v === "object") {
+      for (const k of ["milliseconds", "ms", "time", "value", "date", "timestamp"]) {
+        const ms = toMs(v[k], depth + 1);
+        if (ms) return ms;
+      }
+    }
+    return 0;
+  }
+  function itemUpdatedAt(o) {
+    if (!o || typeof o !== "object") return 0;
+    // Box 検索は contentUpdated / date が Unix 秒の文字列
+    return toMs(o.contentUpdated, 0) || toMs(o.date, 0) || toMs(o.searchIndexUpdated, 0);
+  }
+  function linkText(s) {
+    if (s && typeof s === "object") return s.url || s.downloadURL || s.vanityURL || "";
+    return s;
+  }
   function itemHit(o) {
     if (!o || typeof o !== "object") return null;
     const id = o.id ?? o.typedID ?? o.itemID ?? o.item_id;
     if (id == null || !/\d/.test(String(id))) return null;
     const typ = String(o.type ?? o.itemType ?? o.typedID ?? "").toLowerCase();
-    return { id: String(id).replace(/^[a-z]_/, ""), type: typ.includes("file") || String(o.typedID || "").startsWith("f_") ? "file" : "folder", name: String(o.name || o.itemName || "") };
+    return { id: String(id).replace(/^[a-z]_/, ""), type: typ.includes("file") || String(o.typedID || "").startsWith("f_") ? "file" : "folder", name: String(o.name || o.itemName || ""), updatedAt: itemUpdatedAt(o) };
   }
-  // /s/ID の直後が区切り文字のときだけ一致（部分一致で別リンクを拾わない）
-  const exactSidRe = new RegExp("/s/" + sharedId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?:[/?#\"']|$)");
+  // /s/ID の直後が区切り文字のときだけ一致。sharedId 空なら収集のみ
+  const exactSidRe = sharedId
+    ? new RegExp("/s/" + sharedId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?:[/?#\"']|$)")
+    : /(?!)/;
   function sharedLinkId(s) {
-    const m = String(s || "").match(/\/s\/([A-Za-z0-9]+)/);
+    const m = String(linkText(s) || "").match(/\/s\/([A-Za-z0-9]+)/);
     return m ? m[1] : null;
   }
   function hasExactSharedId(s) {
-    return sharedLinkId(s) === sharedId;
+    return !!sharedId && sharedLinkId(s) === sharedId;
   }
   function walk(o, depth) {
     if (!o || typeof o !== "object" || depth > 12) return null;
@@ -51,7 +90,24 @@ export async function pageSearchOnce(sharedId, endpoint, folderId, updatedDays, 
   const base = endpoint.replace("{folderid}", encodeURIComponent(folderId)).replace("{updatedDays}", encodeURIComponent(updatedDays));
   const url = pageUrl(base, page);
   try {
-    const r = await fetch(url, { credentials: "include", headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" } });
+    let r, lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        r = await fetch(url, { credentials: "include", headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" } });
+        if (r.status === 429 || r.status === 503) {
+          lastErr = new Error("HTTP " + r.status);
+          r = null;
+          await new Promise(ok => setTimeout(ok, 2000 * (attempt + 1)));
+          continue;
+        }
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        await new Promise(ok => setTimeout(ok, 2000 * (attempt + 1)));
+      }
+    }
+    if (!r) throw lastErr;
     const txt = await r.text();
     let pageCount = 1, resultCount = null;
     let meta = "";
@@ -66,17 +122,18 @@ export async function pageSearchOnce(sharedId, endpoint, folderId, updatedDays, 
     const items = [];
     try {
       const data = JSON.parse(txt);
-      for (const o of data.items || []) {
-        const sid = sharedLinkId(o && o.sharedLink);
+      const list = data.items || data.entries || [];
+      for (const o of list) {
+        const sid = sharedLinkId(o && (o.sharedLink || o.shared_link));
         const it = itemHit(o);
-        if (sid && it) items.push({ sharedId: sid, id: it.id, type: it.type, name: it.name });
+        if (sid && it) items.push({ sharedId: sid, id: it.id, type: it.type, name: it.name, updatedAt: it.updatedAt });
       }
     } catch { }
     const hit = findHit(txt);
     if (exactSidRe.test(txt) && !hit) log.push("sharedIdは見つかったがIDを特定できず");
-    return { id: hit && hit.id, type: hit && hit.type, name: (hit && hit.name) || "", items, page, pageCount, resultCount, log };
+    return { id: hit && hit.id, type: hit && hit.type, name: (hit && hit.name) || "", updatedAt: (hit && hit.updatedAt) || 0, items, page, pageCount, resultCount, log };
   } catch (e) {
     log.push("error " + url + ": " + e);
-    return { page, pageCount: page, log };
+    return { page, failed: true, log };
   }
 }

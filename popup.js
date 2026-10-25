@@ -43,7 +43,7 @@ let busy = false; // 検索終了後に遅延してきた progress で表示を�
 function setBusy(pct) {
   if (!busy) return;
   $("msg").className = "busy";
-  $("msg").textContent = "検索中(" + pct + "%) ...";
+  $("msg").textContent = "キャッシュ更新中(" + pct + "%) ...";
 }
 chrome.runtime.onMessage.addListener(m => {
   if (m.type === "progress") setBusy(m.pct);
@@ -60,7 +60,6 @@ $("go").onclick = async () => {
   setBusy(0);
   const r = await chrome.runtime.sendMessage({ type: "resolve", link: $("l").value });
   busy = false;
-  $("log").textContent = (r.log || []).join("\n");
   if (r.ok) {
     $("msg").className = "ok";
     const kind = r.type === "file" ? "ファイル" : "フォルダ";

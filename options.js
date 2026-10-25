@@ -22,4 +22,90 @@ document.getElementById("save").onclick = async () => {
   }
   await chrome.storage.sync.set(c);
   document.getElementById("msg").textContent = "保存しました";
+  showCache();
 };
+function pad(n) { return String(n).padStart(2, "0"); }
+function fmtDateTime(ms) {
+  const d = new Date(ms);
+  return d.getFullYear() + "/" + pad(d.getMonth() + 1) + "/" + pad(d.getDate())
+    + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+function fmtDay(ms) {
+  const d = new Date(ms);
+  return d.getFullYear() + "/" + pad(d.getMonth() + 1) + "/" + pad(d.getDate());
+}
+function lastWarmLine(w) {
+  if (!w || !w.at) return "";
+  const st = w.ok ? "成功" : "失敗";
+  const dated = w.dated != null ? "  更新日あり " + w.dated + "件" : "";
+  let s = "最終作成: " + fmtDateTime(w.at) + "  " + st + "  " + (w.count || 0) + "件" + dated;
+  if (w.error) s += "\n" + w.error;
+  return s;
+}
+async function showCache() {
+  const v = await chrome.storage.local.get(["sharedIdHits", "lastWarm"]);
+  const all = v.sharedIdHits || {};
+  const domains = Object.keys(all);
+  const head = lastWarmLine(v.lastWarm);
+  if (!domains.length) {
+    document.getElementById("cacheInfo").textContent = (head ? head + "\n\n" : "") + "まだありません。「開く」または「キャッシュ再作成」で作成されます。";
+    return;
+  }
+  const lines = [];
+  if (head) { lines.push(head); lines.push(""); }
+  for (const domain of domains) {
+    const hits = all[domain] || {};
+    const times = Object.values(hits).map(it => it && it.updatedAt).filter(Boolean);
+    const n = Object.keys(hits).length;
+    const noDate = n - times.length;
+    lines.push(domain);
+    lines.push("件数: " + n);
+    if (times.length) {
+      const min = Math.min(...times);
+      const max = Math.max(...times);
+      lines.push("更新日 最古: " + fmtDateTime(min));
+      lines.push("更新日 最新: " + fmtDateTime(max));
+      const byDay = {};
+      for (const t of times) {
+        const day = fmtDay(t);
+        byDay[day] = (byDay[day] || 0) + 1;
+      }
+      lines.push("更新日別:");
+      for (const day of Object.keys(byDay).sort()) lines.push("  " + day + "  " + byDay[day] + "件");
+      if (noDate) lines.push("更新日なし: " + noDate + "件");
+    } else if (n) {
+      lines.push("更新日: まだありません。自社Boxを開き直すと記録されます。");
+    } else {
+      lines.push("中身は空です");
+    }
+    lines.push("");
+  }
+  document.getElementById("cacheInfo").textContent = lines.join("\n").trim();
+}
+document.getElementById("cacheBuild").onclick = async () => {
+  const btn = document.getElementById("cacheBuild");
+  const cacheMsg = document.getElementById("cacheMsg");
+  btn.disabled = true;
+  cacheMsg.textContent = "キャッシュを作成しています…";
+  try {
+    const r = await chrome.runtime.sendMessage({ type: "warmCache" });
+    cacheMsg.textContent = r && r.ok
+      ? "キャッシュを作成しました（" + (r.count || 0) + "件）"
+      : (r && r.error) || "応答がありません。拡張を再読み込みしてください。";
+  } catch (e) {
+    cacheMsg.textContent = String(e);
+  }
+  btn.disabled = false;
+  showCache();
+};
+document.getElementById("cacheClear").onclick = async () => {
+  if (!confirm("共有リンクキャッシュをすべて削除します。よろしいですか？")) return;
+  await chrome.storage.local.remove(["sharedIdHits", "searchCache", "lastWarm", "todayCacheOn"]);
+  document.getElementById("cacheClearMsg").textContent = "キャッシュを消しました";
+  document.getElementById("cacheMsg").textContent = "";
+  showCache();
+};
+chrome.storage.onChanged.addListener((c, area) => {
+  if (area === "local" && (c.sharedIdHits || c.lastWarm)) showCache();
+});
+showCache();

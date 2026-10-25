@@ -37,19 +37,10 @@
   #msg.busy { color: #334155; }
   #msg.ok { color: #15803d; }
   #msg.hint { color: #334155; }
-  #log {
-    white-space: pre-wrap;
-    max-height: 300px;
-    overflow: auto;
-    background: #f8fafc;
-    margin: 10px 0 0;
-    padding: 8px;
-  }
 </style>
 <body>
 <div class="head"><h1>Box 共有リンク を入力してください</h1><a href="options.html" target="_blank">設定</a><a id="close" href="#">閉じる</a></div>
 <input id="l" placeholder="https://(コラボ先ドメイン)/s/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
 <div class="row"><p id="msg"></p><button id="go">開く</button></div>
-<pre id="log"></pre>
 <script type="module" src="popup.js"></script>
 </body>
