@@ -4,14 +4,14 @@ export const DEFAULTS = {
   // {folderid} はフォルダID, {updatedDays} は過去日数, {page} はページ番号。Box Web内部APIは非公開のため要調整
   searchEndpoints: "/app-api/enduserapp/folder/{folderid}/search?sortColumn=date&sortDirection=desc&updatedTime={updatedDays}&page={page}",
   folderId: 0,
-  updatedDays: 30
+  updatedDays: 7
 };
 export async function getConfig() {
   const c = await chrome.storage.sync.get(DEFAULTS);
   c.domainB = (c.domainB || "").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
   c.folderId = c.folderId === "" || c.folderId == null ? 0 : +c.folderId;
   if (Number.isNaN(c.folderId)) c.folderId = 0;
-  c.updatedDays = +c.updatedDays || 30;
+  c.updatedDays = +c.updatedDays || 7;
   return c;
 }
 export function extractSharedId(s) {

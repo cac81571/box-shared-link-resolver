@@ -60,9 +60,18 @@ export async function pageSearchOnce(sharedId, endpoint, folderId, updatedDays, 
       meta = " page=" + (data.pageNumber ?? page) + "/" + pageCount + " resultCount=" + (resultCount ?? "?");
     } catch { }
     log.push("GET " + url + " -> " + r.status + " (" + txt.length + "B)" + meta + " " + txt.slice(0, 120).replace(/\s+/g, " "));
+    const items = [];
+    try {
+      const data = JSON.parse(txt);
+      for (const o of data.items || []) {
+        const sid = sharedLinkId(o && o.sharedLink);
+        const it = itemHit(o);
+        if (sid && it) items.push({ sharedId: sid, id: it.id, type: it.type, name: it.name });
+      }
+    } catch { }
     const hit = findHit(txt);
     if (exactSidRe.test(txt) && !hit) log.push("sharedIdは見つかったがIDを特定できず");
-    return { id: hit && hit.id, type: hit && hit.type, name: (hit && hit.name) || "", page, pageCount, resultCount, log };
+    return { id: hit && hit.id, type: hit && hit.type, name: (hit && hit.name) || "", items, page, pageCount, resultCount, log };
   } catch (e) {
     log.push("error " + url + ": " + e);
     return { page, pageCount: page, log };
