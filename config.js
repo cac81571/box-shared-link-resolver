@@ -1,18 +1,17 @@
 // 設定とBox内部エンドポイント（非公開・推測を含む）をここに集約
 export const DEFAULTS = {
-  domainB: "",            // 例: mycompany.ent.box.com （https:// なし）
-  // {q} は検索語, {n} は件数。複数行=順に試す。Box Web内部APIは非公開のため要調整
-  searchEndpoints: [
-    "/app-api/enduserapp/search?query={q}&limit={n}",
-    "/app-api/enduserapp/recents?limit={n}",
-    "/index.php?rm=box_search&query={q}"
-  ].join("\n"),
-  searchQueries: "*",     // カンマ区切り。空なら '*'
-  limit: 200
+  domainB: "",            // 例: customer-corp.ent.box.com （https:// なし）
+  // {folderid} はフォルダID, {updatedDays} は過去日数, {page} はページ番号。Box Web内部APIは非公開のため要調整
+  searchEndpoints: "/app-api/enduserapp/folder/{folderid}/search?sortColumn=date&sortDirection=desc&updatedTime={updatedDays}&page={page}",
+  folderId: 0,
+  updatedDays: 30
 };
 export async function getConfig() {
   const c = await chrome.storage.sync.get(DEFAULTS);
   c.domainB = (c.domainB || "").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  c.folderId = c.folderId === "" || c.folderId == null ? 0 : +c.folderId;
+  if (Number.isNaN(c.folderId)) c.folderId = 0;
+  c.updatedDays = +c.updatedDays || 30;
   return c;
 }
 export function extractSharedId(s) {

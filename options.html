@@ -1,7 +1,8 @@
 <!doctype html><meta charset="utf-8"><body style="font:13px sans-serif;width:600px">
-<p>ドメインB（例: mycompany.ent.box.com）<br><input id="domainB" style="width:100%"></p>
-<p>検索エンドポイント（1行1つ、{q}=検索語 {n}=件数）<br><textarea id="searchEndpoints" rows="5" style="width:100%"></textarea></p>
-<p>検索語（カンマ区切り。フォルダ名の一部などを入れると精度向上）<br><input id="searchQueries" style="width:100%"></p>
-<p>件数 <input id="limit" type="number"></p>
+<p>コラボレーション先のドメイン（例: customer-corp.ent.box.com）<br><input id="domainB" style="width:100%"></p>
+<p>検索エンドポイント（{folderid}=フォルダID {updatedDays}=過去日数 {page}=ページ）<br><input id="searchEndpoints" style="width:100%"></p>
+<p>検索対象</p>
+<p>フォルダID<br><input id="folderId" style="width:100%"></p>
+<p>更新日：過去〇日<br><input id="updatedDays" style="width:100%"></p>
 <button id="save">保存</button> <span id="msg"></span>
 <script type="module" src="options.js"></script></body>

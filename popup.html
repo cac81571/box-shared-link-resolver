@@ -1,5 +1,53 @@
-<!doctype html><meta charset="utf-8"><body style="width:420px;font:13px sans-serif">
-<input id="l" placeholder="https://.../s/xxxx" style="width:100%"><br>
-<button id="go">解決して開く</button> <a href="options.html" target="_blank">設定</a>
-<pre id="log" style="white-space:pre-wrap;max-height:300px;overflow:auto;background:#f4f4f4"></pre>
-<script src="popup.js"></script></body>
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    width: 540px;
+    margin: 0;
+    padding: 16px;
+    font: 13px/1.45 sans-serif;
+    background: #dbeafe;
+    color: #0f172a;
+  }
+  .head, .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .head { margin: 0 0 12px; }
+  h1 {
+    margin: 0;
+    flex: 1;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  #l {
+    width: 100%;
+    padding: 6px 8px;
+    margin: 0 0 10px;
+  }
+  #msg {
+    margin: 0;
+    color: #b91c1c;
+    flex: 1;
+  }
+  #msg.busy { color: #334155; }
+  #msg.ok { color: #15803d; }
+  #msg.hint { color: #334155; }
+  #log {
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow: auto;
+    background: #f8fafc;
+    margin: 10px 0 0;
+    padding: 8px;
+  }
+</style>
+<body>
+<div class="head"><h1>Box 共有リンク を入力してください</h1><a id="close" href="#">閉じる</a></div>
+<input id="l" placeholder="https://(コラボレーション先のドメイン)/s/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+<div class="row"><button id="go">開く</button><p id="msg"></p><a href="options.html" target="_blank">設定</a></div>
+<pre id="log"></pre>
+<script src="popup.js"></script>
+</body>
