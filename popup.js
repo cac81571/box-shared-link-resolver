@@ -69,6 +69,11 @@ $("go").onclick = async () => {
     setTimeout(() => window.close(), 3000);
     return;
   }
+  if (r.needLogin) {
+    $("msg").className = "hint";
+    $("msg").textContent = "Box にログインしてください";
+    return;
+  }
   $("msg").className = "";
   $("msg").textContent = "見つかりませんでした";
 };

@@ -1,6 +1,6 @@
 // 拡張の常駐処理。ポップアップ・右クリックから resolve。設定からキャッシュ再作成。
-import { resolve, warmCache, hasTodayCache, isResolving } from "./resolver.js";
-import { getConfig, isOwnBoxApp, isBoxSearchTab, hostOf } from "./config.js";
+import { resolve, warmCache, hasTodayCache, isResolving, findSearchTab } from "./resolver.js";
+import { getConfig, isBoxSearchTab } from "./config.js";
 let warming = false;
 chrome.runtime.onInstalled.addListener(() => chrome.contextMenus.create({ id: "resolve", title: "Box共有リンクを解決して開く", contexts: ["link", "selection"] }));
 chrome.contextMenus.onClicked.addListener(async i => {
@@ -9,31 +9,14 @@ chrome.contextMenus.onClicked.addListener(async i => {
 function reportProgress(pct) {
   chrome.runtime.sendMessage({ type: "progress", pct }).catch(() => {});
 }
-async function listBoxTabs() {
-  let tabs = await chrome.tabs.query({ url: ["https://*.box.com/*", "https://box.com/*"] });
-  if (!tabs.length) tabs = (await chrome.tabs.query({})).filter(t => /box\.com/i.test(t.url || ""));
-  return tabs;
-}
-async function findOwnBoxTab(cfg) {
-  const tabs = await listBoxTabs();
-  const usable = tabs.filter(t => isBoxSearchTab(t.url, cfg.ownDomain));
-  const exact = cfg.ownDomain ? usable.filter(t => isOwnBoxApp(t.url, cfg.ownDomain)) : [];
-  return exact[0] || usable[0] || null;
-}
 async function runWarm() {
   if (warming) return { ok: false, error: "作成中です" };
   warming = true;
   const cfg = await getConfig();
   try {
-    const tab = await findOwnBoxTab(cfg);
+    const tab = await findSearchTab(cfg);
     if (!tab) {
-      const boxTabs = await listBoxTabs();
-      const hosts = [...new Set(boxTabs.map(t => hostOf(t.url)).filter(Boolean))];
-      const error = !cfg.ownDomain
-        ? "自社ドメインが未設定です"
-        : hosts.length
-          ? "自社Boxタブが見つかりません。設定: " + cfg.ownDomain + " / 開いているBox: " + hosts.join(", ")
-          : "Boxのタブが開いていません。設定: " + cfg.ownDomain;
+      const error = !cfg.ownDomain ? "自社ドメインが未設定です" : "Box にログインしてください";
       return { ok: false, error };
     }
     return await warmCache(tab.id) || { ok: true, count: 0 };
@@ -75,7 +58,7 @@ async function runTodayWarm() {
     return;
   }
   await chrome.storage.session.set({ [WARM_PENDING]: false }).catch(() => chrome.storage.local.set({ [WARM_PENDING]: false }));
-  const tab = await findOwnBoxTab(cfg);
+  const tab = await findSearchTab(cfg);
   if (!tab) return;
   warming = true;
   try {

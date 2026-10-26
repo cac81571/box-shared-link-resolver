@@ -1,6 +1,6 @@
 // 共有リンクを自社ドメイン上の file/folder ID に解決して開く。
 // 検索は表示中タブ（自社Box）で内部APIを呼ぶ。遷移先は常に ownDomain。
-import { getConfig, extractSharedId, hostOf } from "./config.js";
+import { getConfig, extractSharedId, hostOf, isOwnBoxApp, isBoxSearchTab } from "./config.js";
 import { pageSearchOnce } from "./pagefuncs.js";
 const MAX_PAGES = 100;
 const PAGE_DELAY_MS = 400; // 制限回避。毎秒2〜3リクエストに抑える
@@ -79,6 +79,16 @@ function mergePage(hits, page) {
 async function currentTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   return tabs[0] || null;
+}
+// 検索に使えるBoxタブ。表示中が自社Boxならそれを優先。なければ開いているBoxを探す
+export async function findSearchTab(cfg) {
+  const current = await currentTab();
+  if (current && isBoxSearchTab(current.url, cfg.ownDomain)) return current;
+  let tabs = await chrome.tabs.query({ url: ["https://*.box.com/*", "https://box.com/*"] });
+  if (!tabs.length) tabs = (await chrome.tabs.query({})).filter(t => /box\.com/i.test(t.url || ""));
+  const usable = tabs.filter(t => isBoxSearchTab(t.url, cfg.ownDomain));
+  const exact = cfg.ownDomain ? usable.filter(t => isOwnBoxApp(t.url, cfg.ownDomain)) : [];
+  return exact[0] || usable[0] || null;
 }
 function waitTabComplete(tabId, host, ms = 15000) {
   return new Promise(resolve => {
@@ -191,8 +201,8 @@ export async function resolve(link, onProgress) {
     const url = await openHit(cfg, r, tab && tab.id);
     return { ok: true, url, log, name: r.name || "", type: r.type };
   }
-  const tabForSearch = await currentTab();
-  if (!tabForSearch) return { ok: false, log: [...log, "処理するタブがありません"] };
+  const tabForSearch = await findSearchTab(cfg);
+  if (!tabForSearch) return { ok: false, needLogin: true, log: [...log, "Box にログインしてください"] };
   let report;
   const hitP = new Promise(res => { report = res; });
   let didOpen = false;
