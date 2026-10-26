@@ -19,7 +19,7 @@ async function runWarm() {
       const error = !cfg.ownDomain ? "自社ドメインが未設定です" : "Box にログインしてください";
       return { ok: false, error };
     }
-    return await warmCache(tab.id) || { ok: true, count: 0 };
+    return await warmCache(tab.id, null, reportProgress) || { ok: true, count: 0 };
   } catch (e) {
     console.warn("warmCache failed", e);
     return { ok: false, error: String(e) };

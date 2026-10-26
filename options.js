@@ -82,11 +82,18 @@ async function showCache() {
   }
   document.getElementById("cacheInfo").textContent = lines.join("\n").trim();
 }
+let building = false;
+chrome.runtime.onMessage.addListener(m => {
+  if (m.type === "progress" && building) {
+    document.getElementById("cacheMsg").textContent = "キャッシュを作成しています（" + m.pct + "%）";
+  }
+});
 document.getElementById("cacheBuild").onclick = async () => {
   const btn = document.getElementById("cacheBuild");
   const cacheMsg = document.getElementById("cacheMsg");
   btn.disabled = true;
-  cacheMsg.textContent = "キャッシュを作成しています…";
+  building = true;
+  cacheMsg.textContent = "キャッシュを作成しています（0%）";
   try {
     const r = await chrome.runtime.sendMessage({ type: "warmCache" });
     cacheMsg.textContent = r && r.ok
@@ -95,6 +102,7 @@ document.getElementById("cacheBuild").onclick = async () => {
   } catch (e) {
     cacheMsg.textContent = String(e);
   }
+  building = false;
   btn.disabled = false;
   showCache();
 };

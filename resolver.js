@@ -163,13 +163,15 @@ async function fetchPages(tabId, cfg, updatedDays, hits, progress, stopSid, opts
   }
   return { ...last, log };
 }
-export async function warmCache(tabId, days) {
+export async function warmCache(tabId, days, onProgress) {
   const cfg = await getConfig();
   if (!cfg.ownDomain || !tabId) return { ok: false, count: 0, error: "tab or domain missing" };
   const updatedDays = days || cfg.updatedDays;
+  const progress = pct => { try { onProgress && onProgress(Math.max(0, Math.min(100, Math.round(pct)))); } catch { } };
   return withFetchLock(async () => {
     const hits = await loadHits(cfg.ownDomain, cfg.updatedDays);
-    const r = await fetchPages(tabId, cfg, updatedDays, hits, () => {}, "");
+    progress(0);
+    const r = await fetchPages(tabId, cfg, updatedDays, hits, progress, "");
     await saveHits(cfg.ownDomain, hits, cfg.updatedDays);
     const count = Object.keys(hits).length;
     const dated = Object.values(hits).filter(it => it && it.updatedAt).length;
