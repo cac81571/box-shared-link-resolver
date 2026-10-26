@@ -3,9 +3,10 @@
 <body style="font:13px sans-serif;width:600px">
 <p>自社ドメイン（例: my-corp.ent.box.com）<br><input id="ownDomain" style="width:100%"></p>
 <p>コラボ先ドメイン（例: customer-corp.ent.box.com）<br><input id="domainB" style="width:100%"></p>
-<p>検索エンドポイント（{folderid}=フォルダID {updatedDays}=過去日数 {page}=ページ）<br><input id="searchEndpoints" style="width:100%"></p>
+<p>検索エンドポイント（{folderid}=フォルダID {updatedDays}=過去日数 {type}=種類 {page}=ページ）<br><input id="searchEndpoints" style="width:100%"></p>
 <p>検索対象</p>
 <p>フォルダID<br><input id="folderId" style="width:100%"></p>
+<p>種類（カンマ区切り。種類ごとに検索してマージ）<br><input id="searchTypes" style="width:100%" placeholder="folder,spreadsheet,pdf,document,presentation"></p>
 <p>更新日：過去〇日<br><input id="updatedDays" style="width:100%"></p>
 <p>カタログ登録先フォルダ ID（他ユーザもアクセスできるフォルダ。空なら検索対象のフォルダ ID）<br><input id="catalogFolderId" style="width:100%"></p>
 <button id="save">保存</button> <span id="msg"></span>
@@ -16,6 +17,7 @@
 <p style="color:#475569">タスクスケジューラから自動実行するときは、Chrome で次の URL を開きます。PC に Box のログインが残っている必要があります。<br><code id="schedUrl" style="word-break:break-all"></code></p>
 <p>
   <button id="catalogCollect" type="button">収集</button>
+  <button id="catalogAbort" type="button" disabled>中断</button>
   <button id="catalogPublish" type="button">Box に登録</button>
   <button id="catalogImport" type="button">Box から取り込む</button>
   <span id="catalogMsg"></span>

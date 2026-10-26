@@ -17,8 +17,9 @@
 | --- | --- |
 | 自社ドメイン | 検索と遷移先（例: `my-corp.ent.box.com`） |
 | コラボ先ドメイン | 共有リンクのホスト（例: `customer-corp.ent.box.com`） |
-| 検索エンドポイント | Box Web 内部 API。`{folderid}` `{updatedDays}` `{page}` を実行時に置換 |
+| 検索エンドポイント | Box Web 内部 API。`{folderid}` `{updatedDays}` `{type}` `{page}` を実行時に置換 |
 | フォルダ ID | 検索の起点。`0` ですべてのファイル |
+| 種類 | カンマ区切り。種類ごとに `types=` で検索してマージ（初期値 `folder,spreadsheet,pdf,document,presentation`） |
 | 更新日：過去〇日 | カタログに無いときの検索範囲（初期値 7） |
 | カタログ収集：過去〇日 | 「収集」で取る範囲（初期値 365） |
 | カタログ登録先フォルダ ID | `box-shared-link-catalog.json` を置くフォルダ。空なら検索対象のフォルダ ID。他ユーザもアクセスできるフォルダにする |
@@ -60,6 +61,6 @@ Chrome が既に起動していれば、そのプロファイルで開きます�
 
 表示中の Box タブで、次の内部 API をページ順に呼びます（間隔は約 0.4 秒）。
 
-`/app-api/enduserapp/folder/{folderid}/search?sortColumn=date&sortDirection=desc&updatedTime={updatedDays}&page={page}`
+`/app-api/enduserapp/folder/{folderid}/search?sortColumn=date&sortDirection=desc&updatedTime={updatedDays}&types={type}&page={page}`
 
 `items[].sharedLink` が共有 ID と一致する項目の ID と名前を使います。この API は非公開です。動かないときは、ブラウザの開発者ツールのネットワークで Box 検索時の URL を確認し、設定の「検索エンドポイント」を合わせてください。

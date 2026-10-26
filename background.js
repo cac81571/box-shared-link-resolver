@@ -1,5 +1,5 @@
 // 拡張の常駐処理。ポップアップ・右クリックから resolve。設定からカタログ収集／登録。
-import { resolve, findSearchTab, collectCatalog, uploadCatalog, importCatalog } from "./resolver.js";
+import { resolve, findSearchTab, collectCatalog, uploadCatalog, importCatalog, abortCollect } from "./resolver.js";
 import { getConfig, isBoxSearchTab } from "./config.js";
 chrome.storage.local.remove(["sharedIdHits", "searchCache", "lastWarm", "todayCacheOn", "catalogTodayPending", "catalogTabId"]);
 chrome.storage.session.remove(["catalogTodayPending", "catalogTabId"]).catch(() => {});
@@ -14,6 +14,7 @@ function reportProgress(info) {
     progress: {
       phase: info.phase || "",
       days: info.days || 0,
+      type: info.type || "",
       page: info.page || 0,
       pageCount: info.pageCount || 0,
       remainMs: info.remainMs || 0,
@@ -67,6 +68,11 @@ async function runCatalog(kind) {
 }
 chrome.runtime.onMessage.addListener((m, _s, send) => {
   if (m.type === "ping") {
+    send({ ok: true });
+    return;
+  }
+  if (m.type === "abortCollect") {
+    abortCollect();
     send({ ok: true });
     return;
   }

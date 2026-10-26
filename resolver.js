@@ -43,6 +43,10 @@ async function catalogFileModifiedAt(ownDomain) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let fetchLock = Promise.resolve();
 let resolving = false;
+let collectAbort = false;
+export function abortCollect() {
+  collectAbort = true;
+}
 export function isResolving() {
   return resolving;
 }
@@ -161,9 +165,21 @@ async function run(tabId, func, args) {
     return { log: ["executeScript: " + e] };
   }
 }
+function parseSearchTypes(cfg) {
+  return String(cfg.searchTypes || "").split(/[,、\s]+/).map(s => s.trim()).filter(Boolean);
+}
+function endpointFor(cfg, type) {
+  let ep = (cfg.searchEndpoints || "").split("\n").map(s => s.trim()).filter(Boolean)[0] || "";
+  if (type) {
+    if (ep.includes("{type}")) return ep.replace(/\{type\}/g, encodeURIComponent(type));
+    if (/[?&]types=/.test(ep)) return ep.replace(/([?&]types=)[^&]*/, "$1" + encodeURIComponent(type));
+    return ep + (ep.includes("?") ? "&" : "?") + "types=" + encodeURIComponent(type);
+  }
+  return ep.replace(/&types=\{type\}/g, "").replace(/\?types=\{type\}&/g, "?").replace(/\?types=\{type\}/g, "").replace(/\{type\}/g, "");
+}
 // stopSid があればヒットを通知。continueAfterHit なら残ページも集める
 async function fetchPages(tabId, cfg, updatedDays, hits, progress, stopSid, opts = {}) {
-  const ep = (cfg.searchEndpoints || "").split("\n").map(s => s.trim()).filter(Boolean)[0] || "";
+  const ep = endpointFor(cfg, opts.type || "");
   const maxPages = opts.maxPages || MAX_PAGES;
   const log = [];
   let pageCount = 1;
@@ -174,11 +190,13 @@ async function fetchPages(tabId, cfg, updatedDays, hits, progress, stopSid, opts
   const started = Date.now();
   function emit(page, total, done) {
     const remainMs = done > 0 && total > done ? Math.round((Date.now() - started) / done * (total - done)) : 0;
-    progress(page, total, remainMs);
+    progress(page, total, remainMs, opts.type || "");
   }
   for (let page = 1; page <= pageCount && page <= maxPages; page++) {
+    if (opts.abort && opts.abort()) return { ...last, aborted: true, page, pageCount, log };
     emit(page, knownCount ? pageCount : 0, page - 1);
     if (page > 1) await sleep(PAGE_DELAY_MS);
+    if (opts.abort && opts.abort()) return { ...last, aborted: true, page, pageCount, log };
     last = await run(tabId, pageSearchOnce, [lookSid, ep, cfg.folderId, updatedDays, page]);
     if (last.failed) {
       await sleep(1000);
@@ -200,6 +218,24 @@ async function fetchPages(tabId, cfg, updatedDays, hits, progress, stopSid, opts
         await opts.onHit(hit);
       }
       if (!opts.continueAfterHit) return { ...hit, log };
+      lookSid = "";
+    }
+  }
+  return { ...last, log };
+}
+async function fetchAllTypes(tabId, cfg, updatedDays, hits, progress, stopSid, opts = {}) {
+  const types = parseSearchTypes(cfg);
+  const list = types.length ? types : [""];
+  const log = [];
+  let last = {};
+  let lookSid = stopSid || "";
+  for (const type of list) {
+    if (opts.abort && opts.abort()) return { ...last, aborted: true, log };
+    last = await fetchPages(tabId, cfg, updatedDays, hits, progress, lookSid, { ...opts, type });
+    log.push(...(last.log || []));
+    if (last.aborted) return { ...last, log };
+    if (lookSid && last.id) {
+      if (!opts.continueAfterHit) return { ...last, log };
       lookSid = "";
     }
   }
@@ -295,11 +331,12 @@ async function isolatedImportRecv() {
 }
 async function collectCatalogInner(tabId, cfg, onProgress) {
   const days = cfg.catalogDays || 365;
-  const progress = (page, pageCount, remainMs) => { try { onProgress && onProgress({ page, pageCount, remainMs }); } catch { } };
+  const progress = (page, pageCount, remainMs, type) => { try { onProgress && onProgress({ page, pageCount, remainMs, type }); } catch { } };
   const hits = await loadCatalog(cfg.ownDomain);
   let n = 0;
-  const r = await fetchPages(tabId, cfg, days, hits, progress, "", {
+  const r = await fetchAllTypes(tabId, cfg, days, hits, progress, "", {
     maxPages: CATALOG_MAX_PAGES,
+    abort: () => collectAbort,
     save: async () => {
       n++;
       if (n % 10 === 0) await saveCatalog(cfg.ownDomain, hits);
@@ -308,20 +345,22 @@ async function collectCatalogInner(tabId, cfg, onProgress) {
   await saveCatalog(cfg.ownDomain, hits);
   const count = Object.keys(hits).length;
   const hard = (r.log || []).find(s => String(s).startsWith("executeScript:"));
-  const capped = (r.pageCount && r.page >= CATALOG_MAX_PAGES);
-  const error = hard || (!count ? ((r.log || []).find(s => String(s).startsWith("error ")) || "取得できませんでした") : "");
-  return { ok: !hard && count > 0, count, capped, error, items: hits };
+  const capped = !r.aborted && r.pageCount && r.page >= CATALOG_MAX_PAGES;
+  const error = r.aborted ? "" : (hard || (!count ? ((r.log || []).find(s => String(s).startsWith("error ")) || "取得できませんでした") : ""));
+  return { ok: !hard && (count > 0 || !!r.aborted), aborted: !!r.aborted, count, capped, error, items: hits };
 }
 export async function collectCatalog(tabId, onProgress) {
   const cfg = await getConfig();
   if (!cfg.ownDomain) return { ok: false, count: 0, error: "自社ドメインが未設定です" };
   if (!tabId) return { ok: false, count: 0, error: "Box にログインしてください" };
+  collectAbort = false;
   return withFetchLock(async () => {
     const collected = await collectCatalogInner(tabId, cfg, onProgress);
     await rememberCatalog(cfg, {
       ok: !!collected.ok,
-      error: collected.ok ? (collected.capped ? "ページ上限に達したため、古い分は含まれていない可能性があります" : "") : (collected.error || "取得できませんでした"),
+      error: collected.aborted ? "中断しました" : (collected.ok ? (collected.capped ? "ページ上限に達したため、古い分は含まれていない可能性があります" : "") : (collected.error || "取得できませんでした")),
       action: "collect",
+      aborted: !!collected.aborted,
       capped: !!collected.capped
     });
     return collected;
@@ -465,13 +504,13 @@ export async function resolve(link, onProgress) {
   const days = cfg.updatedDays;
   log.push("ストレージになし。過去" + days + "日分を検索");
   emit({ phase: "recent", days });
-  const progress = (page, pageCount, remainMs) => emit({ phase: "recent", days, page, pageCount, remainMs });
+  const progress = (page, pageCount, remainMs, type) => emit({ phase: "recent", days, page, pageCount, remainMs, type });
   let report;
   const hitP = new Promise(res => { report = res; });
   let didOpen = false;
   const found = {};
   const job = withFetchLock(async () => {
-    await fetchPages(tabForSearch.id, cfg, days, found, progress, sid, {
+    await fetchAllTypes(tabForSearch.id, cfg, days, found, progress, sid, {
       continueAfterHit: true,
       onHit: async hit => {
         report(hit);

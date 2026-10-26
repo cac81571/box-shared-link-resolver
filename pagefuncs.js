@@ -87,7 +87,7 @@ export async function pageSearchOnce(sharedId, endpoint, folderId, updatedDays, 
     u.searchParams.set("page", String(n));
     return u.pathname + u.search + u.hash;
   }
-  const base = endpoint.replace("{folderid}", encodeURIComponent(folderId)).replace("{updatedDays}", encodeURIComponent(updatedDays));
+  const base = endpoint.replace("{folderid}", encodeURIComponent(folderId)).replace("{updatedDays}", encodeURIComponent(updatedDays)).replace("{type}", "");
   const url = pageUrl(base, page);
   try {
     let r, lastErr;

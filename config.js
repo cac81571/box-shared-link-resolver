@@ -6,10 +6,11 @@ function stripHost(s) {
 export const DEFAULTS = {
   ownDomain: "",          // 例: my-corp.ent.box.com （https:// なし）
   domainB: "",            // 例: customer-corp.ent.box.com （https:// なし）
-  // Box Web 内部API（非公開）。{folderid} {updatedDays} {page} を実行時に置換
-  searchEndpoints: "/app-api/enduserapp/folder/{folderid}/search?sortColumn=date&sortDirection=desc&updatedTime={updatedDays}&page={page}",
+  // Box Web 内部API（非公開）。{folderid} {updatedDays} {type} {page} を実行時に置換
+  searchEndpoints: "/app-api/enduserapp/folder/{folderid}/search?sortColumn=date&sortDirection=desc&updatedTime={updatedDays}&types={type}&page={page}",
   folderId: 0,            // 検索の起点フォルダ。0 = すべてのファイル
   updatedDays: 7,         // カタログに無いときの検索範囲（日）
+  searchTypes: "folder,spreadsheet,pdf,document,presentation",
   catalogDays: 365,       // カタログ収集の過去日数
   catalogFolderId: ""     // カタログ JSON の保存先。空なら folderId
 };
@@ -21,6 +22,7 @@ export async function getConfig() {
   c.folderId = c.folderId === "" || c.folderId == null ? 0 : +c.folderId;
   if (Number.isNaN(c.folderId)) c.folderId = 0;
   c.updatedDays = +c.updatedDays || 7;
+  c.searchTypes = String(c.searchTypes == null || c.searchTypes === "" ? DEFAULTS.searchTypes : c.searchTypes);
   c.catalogDays = +c.catalogDays || 365;
   if (c.catalogFolderId === "" || c.catalogFolderId == null) c.catalogFolderId = "";
   else {

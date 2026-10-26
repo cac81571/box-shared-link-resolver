@@ -75,7 +75,7 @@ function setBusy(p) {
   if (p && p.phase === "recent") {
     let s = "更新日が過去" + (p.days || "?") + "日の項目を検索しています";
     if (p.page) {
-      s += "（" + p.page + "/" + (p.pageCount || "?") + " ページ";
+      s += "（" + (p.type ? p.type + " : " : "") + p.page + "/" + (p.pageCount || "?") + " ページ";
       const r = fmtRemain(p.remainMs);
       if (r) s += "  " + r;
       s += "）";

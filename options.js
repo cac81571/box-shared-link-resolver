@@ -14,6 +14,7 @@ async function persistSettings(silent) {
   c.folderId = c.folderId === "" ? 0 : +c.folderId;
   if (Number.isNaN(c.folderId)) c.folderId = 0;
   c.updatedDays = +c.updatedDays || 7;
+  c.searchTypes = String(c.searchTypes || "").split(/[,、]+/).map(s => s.trim()).filter(Boolean).join(",") || DEFAULTS.searchTypes;
   c.catalogDays = +c.catalogDays || 365;
   c.catalogFolderId = c.catalogFolderId === "" ? "" : +c.catalogFolderId;
   if (Number.isNaN(c.catalogFolderId)) c.catalogFolderId = "";
@@ -49,7 +50,7 @@ async function saveForm() {
 }
 function lastCatalogLine(w) {
   if (!w || !w.at) return "";
-  const st = w.skipped ? "スキップ" : (w.ok ? "成功" : "失敗");
+  const st = w.aborted ? "中断" : (w.skipped ? "スキップ" : (w.ok ? "成功" : "失敗"));
   const act = w.action === "import" ? "取り込み" : (w.action === "collect" ? "収集" : "登録");
   let s = "最終" + act + ": " + fmtDateTime(w.at) + "  " + st + "  " + (w.count || 0) + "件";
   if (w.fileId) s += "\nファイル ID: " + w.fileId;
@@ -84,6 +85,7 @@ async function showCatalog() {
   document.getElementById("catalogInfo").textContent = lines.join("\n").trim();
 }
 let cataloging = false;
+let aborting = false;
 function sendBg(msg) {
   return new Promise(resolve => {
     const once = retry => {
@@ -113,27 +115,31 @@ function fmtRemain(ms) {
 }
 function fmtPageProgress(p) {
   if (!p || !p.page) return "";
-  let s = p.page + "/" + (p.pageCount || "?") + " ページ";
+  let s = (p.type ? p.type + " : " : "") + p.page + "/" + (p.pageCount || "?") + " ページ";
   const r = fmtRemain(p.remainMs);
   if (r) s += "  " + r;
   return s;
 }
 function applyProgress(p) {
-  if (!cataloging) return;
+  if (!cataloging || aborting) return;
   const extra = fmtPageProgress(p);
   const prefix = document.getElementById("catalogMsg").dataset.busy || "処理中";
   document.getElementById("catalogMsg").textContent = extra ? prefix + "（" + extra + "）" : prefix;
 }
 async function runCatalog(type, busyText, okText) {
   const btns = ["catalogCollect", "catalogPublish", "catalogImport", "catalogClearImport"].map(id => document.getElementById(id));
+  const abortBtn = document.getElementById("catalogAbort");
   const msg = document.getElementById("catalogMsg");
   btns.forEach(b => { b.disabled = true; });
+  abortBtn.disabled = type !== "collectCatalog";
   cataloging = true;
+  aborting = false;
   msg.dataset.busy = busyText;
   msg.textContent = busyText;
   if (!await saveForm()) {
     cataloging = false;
     btns.forEach(b => { b.disabled = false; });
+    abortBtn.disabled = true;
     if (msg.textContent === busyText) msg.textContent = "設定を保存できませんでした";
     return { ok: false, error: msg.textContent };
   }
@@ -141,15 +147,24 @@ async function runCatalog(type, busyText, okText) {
   const r = await sendBg({ type });
   clearInterval(keep);
   msg.textContent = r && r.ok
-    ? (r.skipped
-      ? "更新がないため取り込みをスキップしました（" + (r.count || 0) + "件）"
-      : okText.replace("{n}", String(r.count || 0)) + (r.sharedLink ? "  " + r.sharedLink : ""))
+    ? (r.aborted
+      ? "中断しました（" + (r.count || 0) + "件）"
+      : r.skipped
+        ? "更新がないため取り込みをスキップしました（" + (r.count || 0) + "件）"
+        : okText.replace("{n}", String(r.count || 0)) + (r.sharedLink ? "  " + r.sharedLink : ""))
     : (r && r.error) || "応答がありません。拡張を再読み込みしてください。";
   cataloging = false;
   btns.forEach(b => { b.disabled = false; });
+  abortBtn.disabled = true;
   showCatalog();
   return r;
 }
+document.getElementById("catalogAbort").onclick = () => {
+  aborting = true;
+  document.getElementById("catalogAbort").disabled = true;
+  document.getElementById("catalogMsg").textContent = "中断しています";
+  sendBg({ type: "abortCollect" });
+};
 document.getElementById("catalogCollect").onclick = () =>
   runCatalog("collectCatalog", "収集しています", "収集しました（{n}件）");
 document.getElementById("catalogPublish").onclick = () =>
@@ -196,7 +211,7 @@ document.getElementById("schedUrl").textContent = chrome.runtime.getURL("options
 if (new URLSearchParams(location.search).get("job") === "collect-publish") {
   settingsReady.then(() =>
     runCatalog("collectCatalog", "自動実行: 収集しています", "収集しました（{n}件）").then(r => {
-      if (r && r.ok) return runCatalog("uploadCatalog", "自動実行: Box に登録しています", "登録しました（{n}件）");
+      if (r && r.ok && !r.aborted) return runCatalog("uploadCatalog", "自動実行: Box に登録しています", "登録しました（{n}件）");
     })
   );
 }
