@@ -42,7 +42,7 @@ async function saveForm() {
 }
 function lastCatalogLine(w) {
   if (!w || !w.at) return "";
-  const st = w.ok ? "成功" : "失敗";
+  const st = w.skipped ? "スキップ" : (w.ok ? "成功" : "失敗");
   const act = w.action === "import" ? "取り込み" : (w.action === "collect" ? "収集" : "登録");
   let s = "最終" + act + ": " + fmtDateTime(w.at) + "  " + st + "  " + (w.count || 0) + "件";
   if (w.fileId) s += "\nファイル ID: " + w.fileId;
@@ -134,7 +134,9 @@ async function runCatalog(type, busyText, okText) {
   const r = await sendBg({ type });
   clearInterval(keep);
   msg.textContent = r && r.ok
-    ? okText.replace("{n}", String(r.count || 0)) + (r.sharedLink ? "  " + r.sharedLink : "")
+    ? (r.skipped
+      ? "更新がないため取り込みをスキップしました（" + (r.count || 0) + "件）"
+      : okText.replace("{n}", String(r.count || 0)) + (r.sharedLink ? "  " + r.sharedLink : ""))
     : (r && r.error) || "応答がありません。拡張を再読み込みしてください。";
   cataloging = false;
   btns.forEach(b => { b.disabled = false; });
@@ -158,7 +160,7 @@ document.getElementById("catalogSaveJson").onclick = async () => {
 };
 document.getElementById("catalogClearImport").onclick = async () => {
   if (!confirm("取り込み済みのカタログと取得日時を削除します。よろしいですか？")) return;
-  await chrome.storage.local.remove(["sharedCatalog", "todayCatalogOn", "catalogFetchedAt", "lastCatalog"]);
+  await chrome.storage.local.remove(["sharedCatalog", "todayCatalogOn", "catalogFetchedAt", "catalogFileModifiedAt", "lastCatalog"]);
   document.getElementById("catalogMsg").textContent = "取り込み情報を消しました";
   await showCatalog();
 };

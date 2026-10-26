@@ -139,7 +139,7 @@ export async function pageSearchOnce(sharedId, endpoint, folderId, updatedDays, 
 }
 
 // MAIN world へ注入する。kind は "publish" | "import"。helpers はクロージャ不可なので関数内に置く
-export function pageCatalogJob(kind, folderId, fileName) {
+export function pageCatalogJob(kind, folderId, fileName, sinceMs) {
   const PUB_SRC = "box-slr-pub";
   const PUB_DONE = "box-slr-pub-done";
   const IMP_START = "box-slr-imp-start";
@@ -232,12 +232,24 @@ export function pageCatalogJob(kind, folderId, fileName) {
     const txt = await r.text();
     return { status: r.status, ok: r.ok, data: parseJson(txt), txt: txt.slice(0, 300), raw: txt };
   }
+  function fileModifiedMs(it) {
+    if (!it || typeof it !== "object") return 0;
+    const v = it.content_modified_at || it.modified_at || it.contentModifiedAt || it.modifiedAt || it.contentUpdated || it.modified || it.date;
+    if (v == null || v === "") return 0;
+    if (typeof v === "number" && Number.isFinite(v)) return v > 1e12 ? Math.round(v) : Math.round(v * 1000);
+    const t = Date.parse(v);
+    return Number.isNaN(t) ? 0 : t;
+  }
   function fileFromEntries(data) {
     const lists = [data && data.entries, data && data.items, data && data.item_collection && data.item_collection.entries].filter(Boolean);
     for (const list of lists) {
       for (const it of list) {
         if (it && String(it.name || "") === fileName && it.id) {
-          return { id: String(it.id).replace(/^f_/, ""), sharedLink: (it.shared_link && it.shared_link.url) || (it.sharedLink && (it.sharedLink.url || it.sharedLink)) || "" };
+          return {
+            id: String(it.id).replace(/^f_/, ""),
+            sharedLink: (it.shared_link && it.shared_link.url) || (it.sharedLink && (it.sharedLink.url || it.sharedLink)) || "",
+            modifiedAt: fileModifiedMs(it)
+          };
         }
       }
     }
@@ -251,7 +263,7 @@ export function pageCatalogJob(kind, folderId, fileName) {
     const urls = [
       "/app-api/enduserapp/folder/" + encodeURIComponent(folderId) + "/items",
       "/app-api/enduserapp/folder/" + encodeURIComponent(folderId),
-      "https://api.box.com/2.0/folders/" + encodeURIComponent(folderId) + "/items?fields=id,name,type,shared_link&limit=1000"
+      "https://api.box.com/2.0/folders/" + encodeURIComponent(folderId) + "/items?fields=id,name,type,shared_link,modified_at,content_modified_at&limit=1000"
     ];
     for (const url of urls) {
       try {
@@ -263,6 +275,21 @@ export function pageCatalogJob(kind, folderId, fileName) {
       } catch (e) { push("FIND error " + e); }
     }
     return null;
+  }
+  async function fileModifiedAt(fileId, token) {
+    const urls = [
+      "https://api.box.com/2.0/files/" + encodeURIComponent(fileId) + "?fields=modified_at,content_modified_at",
+      "/api/2.0/files/" + encodeURIComponent(fileId) + "?fields=modified_at,content_modified_at"
+    ];
+    for (const url of urls) {
+      try {
+        const { ok, data } = await apiJson(url, { method: "GET" }, token);
+        if (!ok || !data) continue;
+        const ms = fileModifiedMs(data);
+        if (ms) return ms;
+      } catch (e) { push("STAT error " + e); }
+    }
+    return 0;
   }
   async function ensureShare(fileId, token) {
     const tries = [
@@ -400,6 +427,11 @@ export function pageCatalogJob(kind, folderId, fileName) {
     const scoped = await getScopedToken();
     const existing = await findFile(scoped);
     if (!existing || !existing.id) return fail("カタログファイルが見つかりません");
+    if (sinceMs && !existing.modifiedAt) existing.modifiedAt = await fileModifiedAt(existing.id, scoped);
+    if (sinceMs && existing.modifiedAt && existing.modifiedAt <= sinceMs) {
+      push("SKIP unchanged " + existing.modifiedAt);
+      return { ok: true, skipped: true, fileId: existing.id, sharedLink: existing.sharedLink || "", modifiedAt: existing.modifiedAt, log };
+    }
     const readTok = await getReadToken(existing.id) || scoped;
     const txt = await downloadById(existing.id, readTok);
     if (!txt) return fail("カタログをダウンロードできませんでした");
@@ -408,7 +440,7 @@ export function pageCatalogJob(kind, folderId, fileName) {
     for (let i = 0; i < total; i++) {
       window.postMessage({ source: IMP_SRC, i, total, chunk: txt.slice(i * CHUNK, (i + 1) * CHUNK) }, "*");
     }
-    return { ok: true, fileId: existing.id, sharedLink: existing.sharedLink || "", bytes: txt.length, log };
+    return { ok: true, fileId: existing.id, sharedLink: existing.sharedLink || "", modifiedAt: existing.modifiedAt || 0, bytes: txt.length, log };
   }
   if (kind === "publish") {
     if (window.__boxSlrPubHandler) window.removeEventListener("message", window.__boxSlrPubHandler);

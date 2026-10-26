@@ -8,6 +8,7 @@ const PAGE_DELAY_MS = 400; // 制限回避。毎秒2〜3リクエストに抑え
 const CATALOG_KEY = "sharedCatalog";
 const TODAY_CATALOG_KEY = "todayCatalogOn";
 const FETCHED_AT_KEY = "catalogFetchedAt";
+const FILE_MOD_KEY = "catalogFileModifiedAt";
 function todayStr() {
   const d = new Date();
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -22,12 +23,22 @@ async function markTodayCatalog(ownDomain) {
   m[ownDomain] = todayStr();
   return chrome.storage.local.set({ [TODAY_CATALOG_KEY]: m });
 }
-async function markCatalogFetched(ownDomain) {
-  const v = await chrome.storage.local.get(FETCHED_AT_KEY);
-  const m = v[FETCHED_AT_KEY] || {};
-  m[ownDomain] = Date.now();
-  await chrome.storage.local.set({ [FETCHED_AT_KEY]: m });
+async function markCatalogFetched(ownDomain, fileModifiedAt) {
+  const v = await chrome.storage.local.get([FETCHED_AT_KEY, FILE_MOD_KEY]);
+  const fetched = v[FETCHED_AT_KEY] || {};
+  fetched[ownDomain] = Date.now();
+  const next = { [FETCHED_AT_KEY]: fetched };
+  if (fileModifiedAt) {
+    const mods = v[FILE_MOD_KEY] || {};
+    mods[ownDomain] = fileModifiedAt;
+    next[FILE_MOD_KEY] = mods;
+  }
+  await chrome.storage.local.set(next);
   return markTodayCatalog(ownDomain);
+}
+async function catalogFileModifiedAt(ownDomain) {
+  const v = await chrome.storage.local.get(FILE_MOD_KEY);
+  return (v[FILE_MOD_KEY] || {})[ownDomain] || 0;
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let fetchLock = Promise.resolve();
@@ -278,8 +289,9 @@ async function isolatedImportRecv() {
   const done = await doneP;
   const result = (done && done.result) || { ok: false, error: "応答がありません" };
   if (!result.ok) return result;
+  if (result.skipped) return { ok: true, skipped: true, fileId: result.fileId || "", sharedLink: result.sharedLink || "", modifiedAt: result.modifiedAt || 0 };
   await chrome.storage.local.set({ _catalogImport: await bodyP });
-  return { ok: true, fileId: result.fileId || "", sharedLink: result.sharedLink || "" };
+  return { ok: true, fileId: result.fileId || "", sharedLink: result.sharedLink || "", modifiedAt: result.modifiedAt || 0 };
 }
 async function collectCatalogInner(tabId, cfg, onProgress) {
   const days = cfg.catalogDays || 365;
@@ -358,7 +370,9 @@ export async function importCatalog(tabId) {
   const cfg = await getConfig();
   if (!cfg.ownDomain || !tabId) return { ok: false, count: 0, error: "tab or domain missing" };
   return withFetchLock(async () => {
-    const installed = await run(tabId, pageCatalogJob, ["import", catalogParentId(cfg), CATALOG_FILE_NAME]);
+    const local = await loadCatalog(cfg.ownDomain);
+    const sinceMs = Object.keys(local).length ? await catalogFileModifiedAt(cfg.ownDomain) : 0;
+    const installed = await run(tabId, pageCatalogJob, ["import", catalogParentId(cfg), CATALOG_FILE_NAME, sinceMs]);
     if (!installed || !installed.ready) {
       const error = "Box タブへ処理を入れられませんでした";
       await rememberCatalog(cfg, { ok: false, error, action: "import" });
@@ -369,6 +383,11 @@ export async function importCatalog(tabId) {
     if (!got.ok) {
       await rememberCatalog(cfg, { ok: false, error: got.error || "取り込みに失敗しました", action: "import" });
       return { ok: false, count: 0, error: got.error || "取り込みに失敗しました" };
+    }
+    if (got.skipped) {
+      await markTodayCatalog(cfg.ownDomain);
+      await rememberCatalog(cfg, { ok: true, error: "ファイル未更新のためスキップ", action: "import", skipped: true, fileId: got.fileId || "", sharedLink: got.sharedLink || "" });
+      return { ok: true, skipped: true, count: Object.keys(local).length, fileId: got.fileId || "", sharedLink: got.sharedLink || "" };
     }
     try {
       const raw = await chrome.storage.local.get("_catalogImport");
@@ -381,7 +400,7 @@ export async function importCatalog(tabId) {
       }
       const merged = mergeCatalogItems(await loadCatalog(cfg.ownDomain), incoming);
       await saveCatalog(cfg.ownDomain, merged);
-      await markCatalogFetched(cfg.ownDomain);
+      await markCatalogFetched(cfg.ownDomain, got.modifiedAt);
       await rememberCatalog(cfg, { ok: true, error: "", action: "import", fileId: got.fileId || "", sharedLink: got.sharedLink || "" });
       return { ok: true, count: Object.keys(merged).length, fileId: got.fileId || "", sharedLink: got.sharedLink || "" };
     } finally {
@@ -425,7 +444,7 @@ export async function resolve(link, onProgress) {
     log.push("本日のカタログを取り込み");
     try {
       const imp = await importCatalog(tabForSearch.id);
-      log.push(imp && imp.ok ? "カタログ " + (imp.count || 0) + "件" : ("カタログ取り込み失敗 " + ((imp && imp.error) || "")));
+      log.push(imp && imp.ok ? (imp.skipped ? "カタログ未更新のためスキップ" : ("カタログ " + (imp.count || 0) + "件")) : ("カタログ取り込み失敗 " + ((imp && imp.error) || "")));
     } catch (e) {
       log.push("カタログ取り込み失敗 " + e);
     }
