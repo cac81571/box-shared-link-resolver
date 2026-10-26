@@ -1,6 +1,6 @@
 // 共有リンクを自社ドメイン上の file/folder ID に解決して開く。
 // 検索は表示中タブ（自社Box）で内部APIを呼ぶ。遷移先は常に ownDomain。
-import { getConfig, extractSharedId } from "./config.js";
+import { getConfig, extractSharedId, hostOf } from "./config.js";
 import { pageSearchOnce } from "./pagefuncs.js";
 const MAX_PAGES = 100;
 const PAGE_DELAY_MS = 400; // 制限回避。毎秒2〜3リクエストに抑える
@@ -11,7 +11,7 @@ function todayStr() {
   const d = new Date();
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
-async function hasTodayCache(ownDomain) {
+export async function hasTodayCache(ownDomain) {
   const v = await chrome.storage.local.get(TODAY_KEY);
   return ((v[TODAY_KEY] || {})[ownDomain] === todayStr());
 }
@@ -23,6 +23,10 @@ async function markTodayCache(ownDomain) {
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let fetchLock = Promise.resolve();
+let resolving = false;
+export function isResolving() {
+  return resolving;
+}
 function withFetchLock(fn) {
   const next = fetchLock.then(fn, fn);
   fetchLock = next.catch(() => {});
@@ -76,6 +80,37 @@ async function currentTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   return tabs[0] || null;
 }
+function waitTabComplete(tabId, host, ms = 15000) {
+  return new Promise(resolve => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(onUpd);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    function onUpd(id, info, tab) {
+      if (id !== tabId || info.status !== "complete") return;
+      if (!host || hostOf(tab.url) === host) finish();
+    }
+    chrome.tabs.onUpdated.addListener(onUpd);
+    chrome.tabs.get(tabId).then(t => {
+      if (t.status === "complete" && (!host || hostOf(t.url) === host)) finish();
+    }).catch(finish);
+  });
+}
+async function openHit(cfg, hit, tabId) {
+  const url = "https://" + cfg.ownDomain + "/" + hit.type + "/" + hit.id;
+  if (tabId) {
+    await chrome.tabs.update(tabId, { url, active: true });
+    await waitTabComplete(tabId, cfg.ownDomain);
+  } else {
+    await chrome.tabs.create({ url, active: true });
+  }
+  return url;
+}
 async function run(tabId, func, args) {
   try {
     const [res] = await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func, args });
@@ -84,38 +119,47 @@ async function run(tabId, func, args) {
     return { log: ["executeScript: " + e] };
   }
 }
-// stopSid があればその共有IDで打ち切る。空なら全ページ収集（ウォームアップ）
-async function fetchPages(tabId, cfg, updatedDays, hits, progress, stopSid) {
+// stopSid があればヒットを通知。continueAfterHit なら残ページも集める
+async function fetchPages(tabId, cfg, updatedDays, hits, progress, stopSid, opts = {}) {
   const ep = (cfg.searchEndpoints || "").split("\n").map(s => s.trim()).filter(Boolean)[0] || "";
   const log = [];
   let pageCount = 1;
   let last = {};
+  let lookSid = stopSid || "";
+  let notified = false;
   for (let page = 1; page <= pageCount && page <= MAX_PAGES; page++) {
     progress(((page - 1) / pageCount) * 100);
     if (page > 1) await sleep(PAGE_DELAY_MS);
-    last = await run(tabId, pageSearchOnce, [stopSid || "", ep, cfg.folderId, updatedDays, page]);
+    last = await run(tabId, pageSearchOnce, [lookSid, ep, cfg.folderId, updatedDays, page]);
     if (last.failed) {
       await sleep(1000);
-      last = await run(tabId, pageSearchOnce, [stopSid || "", ep, cfg.folderId, updatedDays, page]);
+      last = await run(tabId, pageSearchOnce, [lookSid, ep, cfg.folderId, updatedDays, page]);
     }
     log.push(...(last.log || []));
     mergePage(hits, last);
+    if (opts.save) await opts.save();
     if (last.pageCount) pageCount = Math.min(MAX_PAGES, +last.pageCount || pageCount);
     progress((page / pageCount) * 100);
-    if (stopSid && (last.id || hits[stopSid])) {
-      const hit = last.id ? last : hits[stopSid];
-      rememberHit(hits, stopSid, hit);
-      return { ...hit, log };
+    if (lookSid && (last.id || hits[lookSid])) {
+      const hit = last.id ? last : hits[lookSid];
+      rememberHit(hits, lookSid, hit);
+      if (!notified && opts.onHit) {
+        notified = true;
+        await opts.onHit(hit);
+      }
+      if (!opts.continueAfterHit) return { ...hit, log };
+      lookSid = "";
     }
   }
   return { ...last, log };
 }
-export async function warmCache(tabId) {
+export async function warmCache(tabId, days) {
   const cfg = await getConfig();
   if (!cfg.ownDomain || !tabId) return { ok: false, count: 0, error: "tab or domain missing" };
+  const updatedDays = days || cfg.updatedDays;
   return withFetchLock(async () => {
     const hits = await loadHits(cfg.ownDomain, cfg.updatedDays);
-    const r = await fetchPages(tabId, cfg, cfg.updatedDays, hits, () => {}, "");
+    const r = await fetchPages(tabId, cfg, updatedDays, hits, () => {}, "");
     await saveHits(cfg.ownDomain, hits, cfg.updatedDays);
     const count = Object.keys(hits).length;
     const dated = Object.values(hits).filter(it => it && it.updatedAt).length;
@@ -131,53 +175,62 @@ export async function resolve(link, onProgress) {
   const log = [];
   const progress = pct => { try { onProgress && onProgress(Math.max(0, Math.min(100, Math.round(pct)))); } catch { } };
   progress(0);
+  resolving = true;
+  try {
   const cfg = await getConfig();
   if (!cfg.ownDomain) return { ok: false, log: ["オプションで自社ドメインを設定してください"] };
   const sid = extractSharedId(link);
   if (!sid) return { ok: false, log: ["共有IDを抽出できません: " + link] };
   log.push("sharedId=" + sid + " own=" + cfg.ownDomain + " collab=" + cfg.domainB);
   let hits = await loadHits(cfg.ownDomain, cfg.updatedDays);
-  let builtToday = false;
-  if (!(await hasTodayCache(cfg.ownDomain))) {
-    const tabForSearch = await currentTab();
-    if (!tabForSearch) return { ok: false, log: [...log, "処理するタブがありません"] };
-    log.push("当日分キャッシュなし → 作成");
-    await withFetchLock(async () => {
-      hits = await loadHits(cfg.ownDomain, cfg.updatedDays);
-      const rToday = await fetchPages(tabForSearch.id, cfg, 1, hits, progress, "");
-      await saveHits(cfg.ownDomain, hits, cfg.updatedDays);
-      await markTodayCache(cfg.ownDomain);
-      log.push(...(rToday.log || []));
-    });
-    builtToday = true;
-  }
   let r = hits[sid];
-  if (!r || !r.id) {
-    if (!builtToday) {
-      const tabForSearch = await currentTab();
-      if (!tabForSearch) return { ok: false, log: [...log, "処理するタブがありません"] };
-      log.push("cache miss → 当日分を更新");
-      r = await withFetchLock(async () => {
-        hits = await loadHits(cfg.ownDomain, cfg.updatedDays);
-        if (hits[sid]) return hits[sid];
-        const found = await fetchPages(tabForSearch.id, cfg, 1, hits, progress, sid);
-        await saveHits(cfg.ownDomain, hits, cfg.updatedDays);
-        await markTodayCache(cfg.ownDomain);
-        return found;
-      });
-      log.push(...(r.log || []));
-    }
+  if (r && r.id && await hasTodayCache(cfg.ownDomain)) {
+    log.push("cache hit name=" + (r.name || ""));
+    progress(100);
+    const tab = await currentTab();
+    const url = await openHit(cfg, r, tab && tab.id);
+    return { ok: true, url, log, name: r.name || "", type: r.type };
   }
+  const tabForSearch = await currentTab();
+  if (!tabForSearch) return { ok: false, log: [...log, "処理するタブがありません"] };
+  let report;
+  const hitP = new Promise(res => { report = res; });
+  let didOpen = false;
+  const job = withFetchLock(async () => {
+    hits = await loadHits(cfg.ownDomain, cfg.updatedDays);
+    if (hits[sid] && hits[sid].id) report(hits[sid]);
+    if (await hasTodayCache(cfg.ownDomain) && hits[sid] && hits[sid].id) return;
+    log.push(hits[sid] ? "当日分を裏で継続" : "当日分を検索（ヒット後も継続）");
+    await fetchPages(tabForSearch.id, cfg, 1, hits, progress, sid, {
+      continueAfterHit: true,
+      save: () => saveHits(cfg.ownDomain, hits, cfg.updatedDays),
+      onHit: async hit => {
+        report(hit);
+        if (!didOpen) {
+          didOpen = true;
+          await openHit(cfg, hit, tabForSearch.id);
+        }
+      }
+    });
+    await saveHits(cfg.ownDomain, hits, cfg.updatedDays);
+    await markTodayCache(cfg.ownDomain);
+    report(hits[sid] || null);
+  });
+  r = await hitP;
   if (r && r.id) {
     log.push("cache hit name=" + (r.name || ""));
     progress(100);
+    if (!didOpen) {
+      didOpen = true;
+      const url = await openHit(cfg, r, tabForSearch.id);
+      return { ok: true, url, log, name: r.name || "", type: r.type };
+    }
+    const url = "https://" + cfg.ownDomain + "/" + r.type + "/" + r.id;
+    return { ok: true, url, log, name: r.name || "", type: r.type };
   }
-  if (!r || !r.id) return { ok: false, log: [...log, "見つかりませんでした"] };
-  const name = r.name || "";
-  const url = "https://" + cfg.ownDomain + "/" + r.type + "/" + r.id;
-  log.push("→ " + url + (name ? " name=" + name : ""));
-  const tab = await currentTab();
-  if (tab) await chrome.tabs.update(tab.id, { url, active: true });
-  else await chrome.tabs.create({ url, active: true });
-  return { ok: true, url, log, name, type: r.type };
+  await job;
+  return { ok: false, log: [...log, "見つかりませんでした"] };
+  } finally {
+    resolving = false;
+  }
 }

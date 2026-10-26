@@ -48,7 +48,7 @@ async function showCache() {
   const domains = Object.keys(all);
   const head = lastWarmLine(v.lastWarm);
   if (!domains.length) {
-    document.getElementById("cacheInfo").textContent = (head ? head + "\n\n" : "") + "まだありません。「開く」または「キャッシュ再作成」で作成されます。";
+    document.getElementById("cacheInfo").textContent = (head ? head + "\n\n" : "") + "まだありません。「開く」または「キャッシュ作成」で作成されます。";
     return;
   }
   const lines = [];
