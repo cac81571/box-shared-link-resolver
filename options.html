@@ -13,6 +13,7 @@
 <p><b>共有リンクカタログ</b>（大量データを収集し、Box に置いて他ユーザと共有）</p>
 <p>カタログ収集：過去〇日<br><input id="catalogDays" style="width:100%"></p>
 <p style="color:#475569">収集には数分かかることがあります。完了するまでこの画面と Box のタブを閉じないでください。収集後に「Box に登録」で登録先フォルダへ <code>box-shared-link-catalog.json</code> を書き込みます。同じフォルダを見られる他のユーザは「Box から取り込む」で使えます。</p>
+<p style="color:#475569">タスクスケジューラから自動実行するときは、Chrome で次の URL を開きます。PC に Box のログインが残っている必要があります。<br><code id="schedUrl" style="word-break:break-all"></code></p>
 <p>
   <button id="catalogCollect" type="button">収集</button>
   <button id="catalogPublish" type="button">Box に登録</button>

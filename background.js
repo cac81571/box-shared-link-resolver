@@ -1,6 +1,6 @@
 // 拡張の常駐処理。ポップアップ・右クリックから resolve。設定からカタログ収集／登録。
 import { resolve, findSearchTab, collectCatalog, uploadCatalog, importCatalog } from "./resolver.js";
-import { getConfig } from "./config.js";
+import { getConfig, isBoxSearchTab } from "./config.js";
 chrome.storage.local.remove(["sharedIdHits", "searchCache", "lastWarm", "todayCacheOn", "catalogTodayPending", "catalogTabId"]);
 chrome.storage.session.remove(["catalogTodayPending", "catalogTabId"]).catch(() => {});
 let warming = false;
@@ -22,13 +22,31 @@ function reportProgress(info) {
   };
   chrome.storage.session.set(v).catch(() => chrome.storage.local.set(v).catch(() => {}));
 }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function waitUsableBoxTab(tabId, cfg, ms = 45000) {
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    try {
+      const t = await chrome.tabs.get(tabId);
+      if (t && isBoxSearchTab(t.url, cfg.ownDomain)) return t;
+    } catch {
+      return null;
+    }
+    const found = await findSearchTab(cfg);
+    if (found) return found;
+    await sleep(500);
+  }
+  return findSearchTab(cfg);
+}
 async function needSearchTab() {
   const cfg = await getConfig();
-  const tab = await findSearchTab(cfg);
-  if (!tab) {
-    const error = !cfg.ownDomain ? "自社ドメインが未設定です" : "Box にログインしてください";
-    return { tab: null, error };
-  }
+  if (!cfg.ownDomain) return { tab: null, error: "自社ドメインが未設定です" };
+  let tab = await findSearchTab(cfg);
+  if (tab) return { tab, error: "" };
+  const created = await chrome.tabs.create({ url: "https://" + cfg.ownDomain + "/", active: true });
+  if (!created || !created.id) return { tab: null, error: "Box タブを開けませんでした" };
+  tab = await waitUsableBoxTab(created.id, cfg);
+  if (!tab) return { tab: null, error: "Box にログインしてください" };
   return { tab, error: "" };
 }
 async function runCatalog(kind) {

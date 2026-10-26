@@ -2,11 +2,14 @@
 import { DEFAULTS, CATALOG_FILE_NAME } from "./config.js";
 import { loadCatalog, exportCatalogJson, importCatalogJson } from "./resolver.js";
 const keys = Object.keys(DEFAULTS);
-chrome.storage.sync.get(DEFAULTS).then(c => keys.forEach(k => {
-  const empty = (k === "ownDomain" || k === "domainB") && !String(c[k] || "").trim();
-  document.getElementById(k).value = empty ? DEFAULTS[k] : c[k];
-}));
+const settingsReady = chrome.storage.sync.get(DEFAULTS).then(c => {
+  keys.forEach(k => {
+    const empty = (k === "ownDomain" || k === "domainB") && !String(c[k] || "").trim();
+    document.getElementById(k).value = empty ? DEFAULTS[k] : c[k];
+  });
+});
 async function persistSettings(silent) {
+  await settingsReady;
   const c = {}; keys.forEach(k => c[k] = document.getElementById(k).value);
   c.folderId = c.folderId === "" ? 0 : +c.folderId;
   if (Number.isNaN(c.folderId)) c.folderId = 0;
@@ -17,6 +20,10 @@ async function persistSettings(silent) {
   const strip = s => String(s || "").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
   c.ownDomain = strip(c.ownDomain);
   c.domainB = strip(c.domainB);
+  if (!c.ownDomain) {
+    document.getElementById(silent ? "catalogMsg" : "msg").textContent = "自社ドメインが未設定です";
+    return false;
+  }
   // *.box.com 以外は任意ホスト権限が必要
   for (const host of [c.ownDomain, c.domainB]) {
     if (host && !host.endsWith(".box.com")) {
@@ -127,8 +134,8 @@ async function runCatalog(type, busyText, okText) {
   if (!await saveForm()) {
     cataloging = false;
     btns.forEach(b => { b.disabled = false; });
-    msg.textContent = "設定を保存できませんでした";
-    return;
+    if (msg.textContent === busyText) msg.textContent = "設定を保存できませんでした";
+    return { ok: false, error: msg.textContent };
   }
   const keep = setInterval(() => sendBg({ type: "ping" }), 20000);
   const r = await sendBg({ type });
@@ -141,6 +148,7 @@ async function runCatalog(type, busyText, okText) {
   cataloging = false;
   btns.forEach(b => { b.disabled = false; });
   showCatalog();
+  return r;
 }
 document.getElementById("catalogCollect").onclick = () =>
   runCatalog("collectCatalog", "収集しています", "収集しました（{n}件）");
@@ -184,3 +192,11 @@ chrome.storage.onChanged.addListener((c, area) => {
   if (area === "local" && (c.sharedCatalog || c.lastCatalog || c.catalogFetchedAt)) showCatalog();
 });
 showCatalog();
+document.getElementById("schedUrl").textContent = chrome.runtime.getURL("options.html") + "?job=collect-publish";
+if (new URLSearchParams(location.search).get("job") === "collect-publish") {
+  settingsReady.then(() =>
+    runCatalog("collectCatalog", "自動実行: 収集しています", "収集しました（{n}件）").then(r => {
+      if (r && r.ok) return runCatalog("uploadCatalog", "自動実行: Box に登録しています", "登録しました（{n}件）");
+    })
+  );
+}

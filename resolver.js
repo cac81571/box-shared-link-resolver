@@ -314,7 +314,8 @@ async function collectCatalogInner(tabId, cfg, onProgress) {
 }
 export async function collectCatalog(tabId, onProgress) {
   const cfg = await getConfig();
-  if (!cfg.ownDomain || !tabId) return { ok: false, count: 0, error: "tab or domain missing" };
+  if (!cfg.ownDomain) return { ok: false, count: 0, error: "自社ドメインが未設定です" };
+  if (!tabId) return { ok: false, count: 0, error: "Box にログインしてください" };
   return withFetchLock(async () => {
     const collected = await collectCatalogInner(tabId, cfg, onProgress);
     await rememberCatalog(cfg, {
@@ -328,7 +329,8 @@ export async function collectCatalog(tabId, onProgress) {
 }
 export async function uploadCatalog(tabId) {
   const cfg = await getConfig();
-  if (!cfg.ownDomain || !tabId) return { ok: false, count: 0, error: "tab or domain missing" };
+  if (!cfg.ownDomain) return { ok: false, count: 0, error: "自社ドメインが未設定です" };
+  if (!tabId) return { ok: false, count: 0, error: "Box にログインしてください" };
   return withFetchLock(async () => {
     const items = await loadCatalog(cfg.ownDomain);
     const count = Object.keys(items).length;
@@ -368,7 +370,8 @@ export async function uploadCatalog(tabId) {
 }
 export async function importCatalog(tabId) {
   const cfg = await getConfig();
-  if (!cfg.ownDomain || !tabId) return { ok: false, count: 0, error: "tab or domain missing" };
+  if (!cfg.ownDomain) return { ok: false, count: 0, error: "自社ドメインが未設定です" };
+  if (!tabId) return { ok: false, count: 0, error: "Box にログインしてください" };
   return withFetchLock(async () => {
     const local = await loadCatalog(cfg.ownDomain);
     const sinceMs = Object.keys(local).length ? await catalogFileModifiedAt(cfg.ownDomain) : 0;

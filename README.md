@@ -34,6 +34,21 @@
 
 見つかると、ファイル／フォルダ名を出してそのページを開き、3 秒後にポップアップを閉じます。
 
+## タスクスケジューラ（収集 → Box 登録）
+
+タスクスケジューラから拡張のボタンは直接押せません。Chrome で設定画面の自動実行 URL を開きます。設定画面に URL が出ます（`chrome-extension://拡張ID/options.html?job=collect-publish`）。
+
+1. 同じ Windows ユーザーで Chrome に Box ログインが残っていること
+2. タスクは「ユーザーがログオンしているときのみ実行」
+3. 操作はプログラムの開始。プログラムは Chrome、引数は上の URL（引用符で囲む）
+4. 収集は数分かかることがあるので、タスクの制限時間は長めにする
+
+例:
+
+`"C:\Program Files\Google\Chrome\Application\chrome.exe" "chrome-extension://拡張ID/options.html?job=collect-publish"`
+
+Chrome が既に起動していれば、そのプロファイルで開きます。Box タブが無ければ自社ドメインを開きます。ログイン画面になると失敗します。
+
 ## 検索の流れ
 
 検索結果のうち、共有リンクが付いている項目だけをカタログに残します。日付はファイルの更新日（`contentUpdated` / `date`、Unix 秒）です。
