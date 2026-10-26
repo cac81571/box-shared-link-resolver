@@ -158,9 +158,7 @@ document.getElementById("catalogSaveJson").onclick = async () => {
 };
 document.getElementById("catalogClearImport").onclick = async () => {
   if (!confirm("取り込み済みのカタログと取得日時を削除します。よろしいですか？")) return;
-  await chrome.storage.local.remove(["sharedCatalog", "todayCatalogOn", "catalogFetchedAt", "lastCatalog", "catalogTodayPending", "catalogTabId"]);
-  await chrome.storage.session.remove(["catalogTodayPending", "catalogTabId"]).catch(() => {});
-  chrome.alarms.clear("catalogToday");
+  await chrome.storage.local.remove(["sharedCatalog", "todayCatalogOn", "catalogFetchedAt", "lastCatalog"]);
   document.getElementById("catalogMsg").textContent = "取り込み情報を消しました";
   await showCatalog();
 };
