@@ -210,8 +210,12 @@ export async function resolve(link, onProgress) {
     hits = await loadHits(cfg.ownDomain, cfg.updatedDays);
     if (hits[sid] && hits[sid].id) report(hits[sid]);
     if (await hasTodayCache(cfg.ownDomain) && hits[sid] && hits[sid].id) return;
-    log.push(hits[sid] ? "当日分を裏で継続" : "当日分を検索（ヒット後も継続）");
-    await fetchPages(tabForSearch.id, cfg, 1, hits, progress, sid, {
+    const empty = !Object.keys(hits).length;
+    const days = empty ? cfg.updatedDays : 1;
+    log.push(empty
+      ? "キャッシュなし。過去" + days + "日分を検索（ヒット後も継続）"
+      : (hits[sid] ? "当日分を裏で継続" : "当日分を検索（ヒット後も継続）"));
+    await fetchPages(tabForSearch.id, cfg, days, hits, progress, sid, {
       continueAfterHit: true,
       save: () => saveHits(cfg.ownDomain, hits, cfg.updatedDays),
       onHit: async hit => {
