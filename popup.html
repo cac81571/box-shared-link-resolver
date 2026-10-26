@@ -23,6 +23,11 @@
     font-size: 14px;
     font-weight: 600;
   }
+  #fetchedAt {
+    color: #334155;
+    font-size: 12px;
+    white-space: nowrap;
+  }
   #close { margin-left: 12px; }
   #l {
     width: 100%;
@@ -39,7 +44,7 @@
   #msg.hint { color: #334155; }
 </style>
 <body>
-<div class="head"><h1>Box 共有リンク を入力してください</h1><a href="options.html" target="_blank">設定</a><a id="close" href="#">閉じる</a></div>
+<div class="head"><h1>Box 共有リンク を入力してください</h1><span id="fetchedAt"></span><a href="options.html" target="_blank">設定</a><a id="close" href="#">閉じる</a></div>
 <input id="l" placeholder="https://(コラボ先ドメイン)/s/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
 <div class="row"><p id="msg"></p><button id="go">開く</button></div>
 <script type="module" src="popup.js"></script>

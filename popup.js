@@ -1,5 +1,6 @@
 // ポップアップ UI。共有リンク入力 → background の resolve → 結果表示。
 import { getConfig } from "./config.js";
+import { hasTodayCatalog } from "./resolver.js";
 const $ = id => document.getElementById(id);
 const SAMPLE_ID = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 // ポップアップでは clipboard.readText() が拒否されがちなので execCommand('paste') を使う
@@ -20,6 +21,18 @@ function clipboardSharedLink(host) {
   const prefix = "https://" + host + "/s/";
   return t.startsWith(prefix) ? t : "";
 }
+function pad(n) { return String(n).padStart(2, "0"); }
+function fmtDateTime(ms) {
+  const d = new Date(ms);
+  return d.getFullYear() + "/" + pad(d.getMonth() + 1) + "/" + pad(d.getDate())
+    + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+async function showFetchedAt() {
+  const cfg = await getConfig();
+  const v = await chrome.storage.local.get("catalogFetchedAt");
+  const at = cfg.ownDomain && (v.catalogFetchedAt || {})[cfg.ownDomain];
+  $("fetchedAt").textContent = at ? "カタログ取得 " + fmtDateTime(at) : "カタログ未取得";
+}
 getConfig().then(c => {
   const own = c.ownDomain;
   const host = c.domainB;
@@ -39,14 +52,42 @@ getConfig().then(c => {
     el.focus();
   }
 });
+showFetchedAt();
 let busy = false; // 検索終了後に遅延してきた progress で表示を上書きしない
-function setBusy(pct) {
+function fmtRemain(ms) {
+  if (!(ms > 0)) return "";
+  const s = Math.max(1, Math.round(ms / 1000));
+  if (s < 60) return "残り約" + s + "秒";
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return "残り約" + m + "分" + (r ? r + "秒" : "");
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return "残り約" + h + "時間" + (rm ? rm + "分" : "");
+}
+function setBusy(p) {
   if (!busy) return;
   $("msg").className = "busy";
-  $("msg").textContent = "キャッシュ更新中(" + pct + "%) ...";
+  if (p && p.phase === "import") {
+    $("msg").textContent = "カタログ取得中";
+    return;
+  }
+  if (p && p.phase === "recent") {
+    let s = "更新日が過去" + (p.days || "?") + "日の項目を検索しています";
+    if (p.page) {
+      s += "（" + p.page + "/" + (p.pageCount || "?") + " ページ";
+      const r = fmtRemain(p.remainMs);
+      if (r) s += "  " + r;
+      s += "）";
+    }
+    $("msg").textContent = s;
+    return;
+  }
+  $("msg").textContent = "共有カタログを検索しています";
 }
-chrome.runtime.onMessage.addListener(m => {
-  if (m.type === "progress") setBusy(m.pct);
+chrome.storage.onChanged.addListener(c => {
+  if (c.progress) setBusy(c.progress.newValue);
+  if (c.catalogFetchedAt) showFetchedAt();
 });
 $("close").onclick = e => { e.preventDefault(); window.close(); };
 $("l").addEventListener("keydown", e => {
@@ -57,9 +98,18 @@ $("l").addEventListener("keydown", e => {
 });
 $("go").onclick = async () => {
   busy = true;
-  setBusy(0);
-  const r = await chrome.runtime.sendMessage({ type: "resolve", link: $("l").value });
+  const cfg = await getConfig();
+  const needImport = cfg.ownDomain && !await hasTodayCatalog(cfg.ownDomain);
+  setBusy({ phase: needImport ? "import" : "catalog" });
+  const r = await new Promise(resolve => {
+    chrome.runtime.sendMessage({ type: "resolve", link: $("l").value }, res => {
+      const err = chrome.runtime.lastError;
+      if (err) resolve({ ok: false, error: err.message });
+      else resolve(res || { ok: false });
+    });
+  });
   busy = false;
+  showFetchedAt();
   if (r.ok) {
     $("msg").className = "ok";
     const kind = r.type === "file" ? "ファイル" : "フォルダ";
@@ -75,5 +125,7 @@ $("go").onclick = async () => {
     return;
   }
   $("msg").className = "";
-  $("msg").textContent = "見つかりませんでした";
+  $("msg").textContent = r.notFound
+    ? "見つかりませんでした。設定の「更新日：過去〇日」を広げてみてください。"
+    : (r.error || "見つかりませんでした");
 };

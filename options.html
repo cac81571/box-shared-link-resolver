@@ -7,9 +7,23 @@
 <p>検索対象</p>
 <p>フォルダID<br><input id="folderId" style="width:100%"></p>
 <p>更新日：過去〇日<br><input id="updatedDays" style="width:100%"></p>
+<p>カタログ登録先フォルダ ID（他ユーザもアクセスできるフォルダ。空なら検索対象のフォルダ ID）<br><input id="catalogFolderId" style="width:100%"></p>
 <button id="save">保存</button> <span id="msg"></span>
 <hr style="margin:56px 0 32px">
-<p><b>共有リンクキャッシュ</b>　<button id="cacheBuild" type="button">キャッシュ作成</button> <span id="cacheMsg"></span></p>
-<div id="cacheInfo" style="background:#f8fafc;padding:10px;white-space:pre-wrap"></div>
-<p style="margin:16px 0 0"><button id="cacheClear" type="button" style="color:#b91c1c">キャッシュをクリア</button> <span id="cacheClearMsg"></span></p>
+<p><b>共有リンクカタログ</b>（大量データを収集し、Box に置いて他ユーザと共有）</p>
+<p>カタログ収集：過去〇日<br><input id="catalogDays" style="width:100%"></p>
+<p style="color:#475569">収集には数分かかることがあります。完了するまでこの画面と Box のタブを閉じないでください。収集後に「Box に登録」で登録先フォルダへ <code>box-shared-link-catalog.json</code> を書き込みます。同じフォルダを見られる他のユーザは「Box から取り込む」で使えます。</p>
+<p>
+  <button id="catalogCollect" type="button">収集</button>
+  <button id="catalogPublish" type="button">Box に登録</button>
+  <button id="catalogImport" type="button">Box から取り込む</button>
+  <span id="catalogMsg"></span>
+</p>
+<p>
+  <button id="catalogSaveJson" type="button">JSON を保存</button>
+  <button id="catalogLoadJson" type="button">JSON を読み込む</button>
+  <input id="catalogFile" type="file" accept="application/json" style="display:none">
+  <button id="catalogClearImport" type="button" style="color:#b91c1c">取り込み情報削除</button>
+</p>
+<div id="catalogInfo" style="background:#f8fafc;padding:10px;white-space:pre-wrap"></div>
 <script type="module" src="options.js"></script></body>
