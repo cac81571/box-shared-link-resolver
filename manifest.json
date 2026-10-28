@@ -1,6 +1,6 @@
 {"manifest_version":3,"name":"Box Shared Link Resolver","version":"0.1.0",
 "description":"Box共有リンク(/s/xxx)からフォルダ/ファイルIDを探して遷移します（ログイン中のBoxタブを使用）",
-"permissions":["scripting","storage","tabs","contextMenus","activeTab","clipboardRead"],
+"permissions":["scripting","storage","tabs","contextMenus","activeTab"],
 "host_permissions":["https://*.box.com/*"],
 "optional_host_permissions":["https://*/*"],
 "background":{"service_worker":"background.js","type":"module"},

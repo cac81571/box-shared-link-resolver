@@ -3,23 +3,13 @@ import { getConfig } from "./config.js";
 import { hasTodayCatalog } from "./resolver.js";
 const $ = id => document.getElementById(id);
 const SAMPLE_ID = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
-// ポップアップでは clipboard.readText() が拒否されがちなので execCommand('paste') を使う
-function readClipboardText() {
-  const ta = document.createElement("textarea");
-  ta.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0";
-  document.body.appendChild(ta);
-  ta.focus();
-  document.execCommand("paste");
-  const v = ta.value;
-  ta.remove();
-  return v;
-}
-// 先頭が https://コラボ先ドメイン/s/ のときだけ初期表示する
-function clipboardSharedLink(host) {
+// 表示中タブのアドレスバーが https://コラボ先ドメイン/s/ のときだけ初期表示する
+async function tabSharedLink(host) {
   if (!host) return "";
-  const t = readClipboardText().trim();
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const t = ((tabs[0] && tabs[0].url) || "").trim();
   const prefix = "https://" + host + "/s/";
-  return t.startsWith(prefix) ? t : "";
+  return t.startsWith(prefix) ? t.split("#")[0] : "";
 }
 function pad(n) { return String(n).padStart(2, "0"); }
 function fmtDateTime(ms) {
@@ -33,7 +23,7 @@ async function showFetchedAt() {
   const at = cfg.ownDomain && (v.catalogFetchedAt || {})[cfg.ownDomain];
   $("fetchedAt").textContent = at ? "カタログ取得 " + fmtDateTime(at) : "カタログ未取得";
 }
-getConfig().then(c => {
+getConfig().then(async c => {
   const own = c.ownDomain;
   const host = c.domainB;
   $("l").placeholder = "https://" + (host || "(コラボ先ドメイン)") + "/s/" + SAMPLE_ID;
@@ -43,7 +33,7 @@ getConfig().then(c => {
     $("msg").textContent = "はじめに「設定」リンクをクリックして「自社ドメイン」と「コラボ先ドメイン」を登録してください";
   }
   const el = $("l");
-  const link = clipboardSharedLink(host);
+  const link = await tabSharedLink(host);
   if (link) {
     el.value = link;
     el.focus();
